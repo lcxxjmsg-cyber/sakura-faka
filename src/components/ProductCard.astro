@@ -1,0 +1,42 @@
+---
+import { formatUsdt } from '@/lib/db';
+
+interface Props {
+  id: number;
+  title: string;
+  cover: string;
+  price: string;
+  desc: string;
+  category: string;
+  stock: number;
+  sold: number;
+}
+const { id, title, cover, price, desc, category, stock, sold } = Astro.props;
+---
+<a href={`/product/${id}`} class="card group overflow-hidden hover:-translate-y-1.5 transition-transform duration-300 block">
+  <div class="aspect-[4/3] overflow-hidden relative">
+    {
+      cover ? (
+        <img src={cover} alt={title} class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+      ) : (
+        <div class="w-full h-full bg-gradient-to-br from-rose-300 to-pink-500 flex items-center justify-center">
+          <span class="text-6xl animate-float">🌸</span>
+        </div>
+      )
+    }
+    {category && <span class="badge absolute top-3 left-3 bg-white/80 text-rose-500 border border-rose-200">{category}</span>}
+  </div>
+  <div class="p-4">
+    <h3 class="font-semibold text-slate-800 line-clamp-1 group-hover:text-rose-500 transition">{title}</h3>
+    {desc && <p class="mt-1 text-sm text-slate-500 line-clamp-2">{desc}</p>}
+    <div class="mt-3 flex items-center justify-between">
+      <span class="text-lg font-bold text-rose-500">{formatUsdt(price)} <span class="text-xs font-normal text-slate-400">USDT</span></span>
+      <span class="text-xs text-slate-400">售出 {sold}</span>
+    </div>
+    <div class="mt-2">
+      <span class={`badge ${stock > 0 ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-slate-100 text-slate-400'}`}>
+        {stock > 0 ? `库存 ${stock}` : '已售罄'}
+      </span>
+    </div>
+  </div>
+</a>

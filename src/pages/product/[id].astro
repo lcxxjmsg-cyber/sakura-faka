@@ -1,0 +1,46 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getProduct } from '@/lib/db';
+import BuyPanel from '@/components/BuyPanel.astro';
+
+export const prerender = false;
+const runtime = (Astro as any).locals?.runtime;
+const env = runtime?.env;
+const id = Number(Astro.params.id);
+const product = env ? await getProduct(env.DB, id) : null;
+---
+<Layout title={product?.title || '商品'}>
+  {
+    !product ? (
+      <div class="text-center py-20 text-night-300">
+        <p class="text-4xl mb-4">😢</p>
+        <p>商品不存在或已下架。</p>
+        <a href="/" class="btn-sakura mt-6">返回商店</a>
+      </div>
+    ) : (
+      <div class="grid lg:grid-cols-2 gap-8">
+        <!-- 左：商品图 -->
+        <div class="card overflow-hidden h-fit">
+          {
+            product.cover ? (
+              <img src={product.cover} alt={product.title} class="w-full aspect-[4/3] object-cover" />
+            ) : (
+              <div class="w-full aspect-[4/3] bg-sakura-gradient bg-card-shine flex items-center justify-center">
+                <span class="text-8xl animate-float">🌸</span>
+              </div>
+            )
+          }
+        </div>
+
+        <!-- 右：购买区 -->
+        <BuyPanel
+          id={product.id}
+          title={product.title}
+          desc={product.description}
+          price={product.price}
+          stock={product.stock}
+        />
+      </div>
+    )
+  }
+</Layout>

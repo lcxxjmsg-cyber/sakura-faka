@@ -1,0 +1,56 @@
+export type Product = {
+  id: number;
+  title: string;
+  description: string;
+  cover: string;
+  price: string;       // USDT 最小单位整数 (1e6)
+  stock: number;
+  sold: number;
+  category: string;
+  status: number;
+  sort: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Card = {
+  id: number;
+  product_id: number;
+  card: string;
+  status: number;
+  order_id: number | null;
+  sold_at: string | null;
+  created_at: string;
+};
+
+export type Order = {
+  id: string;
+  product_id: number;
+  product_title: string;
+  qty: number;
+  total_price: string; // USDT 最小单位
+  address: string;     // 每订单唯一子地址
+  status: 'pending' | 'paid' | 'closed' | 'shipped';
+  tx_hash: string;
+  tx_confirm: number;
+  contact_email: string;
+  view_token: string;
+  card_ids: string;
+  created_at: string;
+  paid_at: string | null;
+  expired_at: string | null;
+};
+
+export type StoreEnv = {
+  DB: D1Database;
+  KV: KVNamespace;
+  SITE_NAME: string;
+  SITE_WELCOME: string;
+  ADMIN_PASSWORD: string;
+  TRON_MNEMONIC: string;
+  TRON_MASTER_ADDRESS: string;
+  TRON_CONFIRMATIONS: string;
+  POLL_INTERVAL: string;
+  TRON_RPC_URL: string;
+  CRON_SECRET: string;
+};

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a1a3e"/>
+      <stop offset="45%" stop-color="#6c3f8f"/>
+      <stop offset="80%" stop-color="#d98bb6"/>
+      <stop offset="100%" stop-color="#f7d4e0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="30%" cy="25%" r="60%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="60"/>
+    </filter>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bg-grad)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+
+  <!-- 光斑 -->
+  <circle cx="600" cy="300" r="220" fill="#ff9ec3" opacity="0.45" filter="url(#blur)"/>
+  <circle cx="1350" cy="450" r="260" fill="#b388ff" opacity="0.4" filter="url(#blur)"/>
+  <circle cx="300" cy="820" r="200" fill="#ffe0ea" opacity="0.4" filter="url(#blur)"/>
+  <circle cx="1650" cy="850" r="240" fill="#c1a4ff" opacity="0.35" filter="url(#blur)"/>
+
+  <!-- 樱花花瓣 -->
+  <g fill="#ffc8dc" opacity="0.5">
+    <ellipse cx="200" cy="180" rx="12" ry="7" transform="rotate(30 200 180)"/>
+    <ellipse cx="420" cy="90" rx="10" ry="6" transform="rotate(-20 420 90)"/>
+    <ellipse cx="850" cy="150" rx="13" ry="7" transform="rotate(50 850 150)"/>
+    <ellipse cx="1150" cy="230" rx="9" ry="5" transform="rotate(-35 1150 230)"/>
+    <ellipse cx="1450" cy="120" rx="11" ry="6" transform="rotate(15 1450 120)"/>
+    <ellipse cx="1760" cy="200" rx="12" ry="7" transform="rotate(-45 1760 200)"/>
+    <ellipse cx="300" cy="500" rx="8" ry="5" transform="rotate(40 300 500)"/>
+    <ellipse cx="1650" cy="550" rx="9" ry="5" transform="rotate(-25 1650 550)"/>
+    <ellipse cx="1000" cy="700" rx="10" ry="6" transform="rotate(60 1000 700)"/>
+  </g>
+</svg>

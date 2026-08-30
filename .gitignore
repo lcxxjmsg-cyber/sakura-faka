@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+.wrangler/
+.astro/
+
+# misc
+.DS_Store
+*.log
+.env
+.env.*
+
+# seed 测试数据不纳入（含示例卡密）
+seed.sql

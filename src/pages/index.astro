@@ -1,0 +1,51 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getProducts } from '@/lib/db';
+import ProductCard from '@/components/ProductCard.astro';
+import { getSiteConfig } from '@/lib/site';
+
+export const prerender = false;
+const runtime = (Astro as any).locals?.runtime;
+const env = runtime?.env;
+const site = await getSiteConfig(runtime);
+const products = env ? await getProducts(env.DB) : [];
+---
+<Layout title="商店">
+  <section class="glass overflow-hidden text-center py-10">
+    <span class="text-6xl animate-float inline-block">🌙</span>
+    <h1 class="mt-3 text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-pink-500">{site.welcome}</h1>
+    <p class="mt-2 text-slate-600">支持 USDT (TRC-20) 支付 · 支付后自动发货</p>
+  </section>
+
+  <section class="glass mt-6 overflow-hidden">
+    <div class="panel-header">
+      <span class="text-rose-500">🛍️</span>
+      <h6 class="m-0">购买</h6>
+    </div>
+    <div class="p-5">
+      {
+        products.length === 0 ? (
+          <div class="text-center py-16 text-slate-500">
+            <p class="text-4xl mb-4">🍃</p>
+            <p>暂无上架商品，请等待店主补货。</p>
+          </div>
+        ) : (
+          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+            {products.map((p) => (
+              <ProductCard
+                id={p.id}
+                title={p.title}
+                cover={p.cover}
+                price={p.price}
+                desc={p.description}
+                category={p.category}
+                stock={p.stock}
+                sold={p.sold}
+              />
+            ))}
+          </div>
+        )
+      }
+    </div>
+  </section>
+</Layout>

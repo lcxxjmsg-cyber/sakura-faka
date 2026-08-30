@@ -1,0 +1,337 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getSiteConfig } from '@/lib/site';
+const site = await getSiteConfig((Astro as any).locals?.runtime);
+---
+<Layout title="后台管理">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-slate-800">后台管理</h1>
+    <button onclick="location.href='/'" class="btn-ghost !py-2 !px-4 text-sm">返回商店</button>
+  </div>
+
+  <div class="flex gap-2 mb-6 border-b border-slate-200">
+    <button class="tab-btn active" data-tab="products">📦 商品管理</button>
+    <button class="tab-btn" data-tab="orders">🧾 订单管理</button>
+  </div>
+
+  <!-- 商品管理 -->
+  <section id="tab-products" class="tab-panel">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold text-slate-700">商品列表</h2>
+      <button onclick="openNew()" class="btn-sakura !py-2.5 !px-5 text-sm">＋ 新增商品</button>
+    </div>
+    <div id="product-list" class="space-y-3">加载中…</div>
+  </section>
+
+  <!-- 订单管理 -->
+  <section id="tab-orders" class="tab-panel hidden">
+    <div class="flex flex-wrap gap-2 mb-4">
+      <button class="status-btn active" data-status="all">全部</button>
+      <button class="status-btn" data-status="pending">待支付</button>
+      <button class="status-btn" data-status="paid">已付待发</button>
+      <button class="status-btn" data-status="shipped">已发货</button>
+      <button class="status-btn" data-status="closed">已关闭</button>
+    </div>
+    <div id="order-list" class="space-y-3">加载中…</div>
+  </section>
+</Layout>
+
+<!-- 新增/编辑商品弹窗 -->
+<div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeModal()"></div>
+  <div class="relative card w-full max-w-lg p-6">
+    <h3 id="modal-title" class="text-lg font-bold mb-4 text-slate-800">新增商品</h3>
+    <input type="hidden" id="e-id" />
+    <div class="space-y-3">
+      <div>
+        <label class="text-sm text-slate-500">商品标题</label>
+        <input id="e-title" class="input mt-1" placeholder="如：某会员卡密" />
+      </div>
+      <div>
+        <label class="text-sm text-slate-500">价格 (USDT)</label>
+        <input id="e-price" type="number" step="0.01" class="input mt-1" placeholder="如 9.99" />
+      </div>
+      <div>
+        <label class="text-sm text-slate-500">分类</label>
+        <input id="e-category" class="input mt-1" placeholder="如：会员/礼品/游戏" />
+      </div>
+      <div>
+        <label class="text-sm text-slate-500">封面图 URL</label>
+        <input id="e-cover" class="input mt-1" placeholder="https://…（留空用默认樱花图）" />
+      </div>
+      <div>
+        <label class="text-sm text-slate-500">商品说明</label>
+        <textarea id="e-desc" rows="3" class="input mt-1" placeholder="商品描述（支持HTML）"></textarea>
+      </div>
+      <div class="flex items-center gap-4">
+        <label class="flex items-center gap-2 text-sm text-slate-600">
+          <input id="e-status" type="checkbox" checked /> 上架
+        </label>
+        <button onclick="openImport()" class="btn-ghost !py-2 !px-4 text-sm ml-auto">导入卡密</button>
+      </div>
+    </div>
+    <div class="mt-6 flex gap-3">
+      <button onclick="saveProduct()" class="btn-sakura flex-1">保存</button>
+      <button onclick="closeModal()" class="btn-ghost">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 卡密导入弹窗 -->
+<div id="import-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeImport()"></div>
+  <div class="relative card w-full max-w-lg p-6">
+    <h3 class="text-lg font-bold mb-1 text-slate-800">批量导入卡密</h3>
+    <p class="text-sm text-slate-500 mb-3">每个卡密一行（支持逗号/空格/竖线分隔，自动去重）</p>
+    <textarea id="import-text" rows="10" class="input font-mono" placeholder="卡密1&#10;卡密2&#10;卡密3"></textarea>
+    <div class="mt-4 flex gap-3">
+      <button onclick="importCards()" class="btn-sakura flex-1">导入</button>
+      <button onclick="closeImport()" class="btn-ghost">取消</button>
+    </div>
+    <p id="import-msg" class="mt-2 text-sm text-emerald-600"></p>
+  </div>
+</div>
+
+<style is:global>
+  .tab-btn { @apply px-4 py-2.5 text-sm font-medium text-slate-500 hover:text-rose-500 transition border-b-2 border-transparent; }
+  .tab-btn.active { @apply text-rose-500 border-rose-400; }
+  .status-btn { @apply px-3 py-1.5 rounded-full text-xs font-medium border border-slate-200 bg-white text-slate-500 hover:border-rose-300 hover:text-rose-500 transition; }
+  .status-btn.active { @apply bg-rose-50 border-rose-300 text-rose-500; }
+</style>
+
+<script>
+  let editingId: number | null = null;
+  let currentImportProduct: number | null = null;
+  let currentStatus = 'all';
+
+  function authFail() {
+    if (confirm('登录已过期，请重新登录')) location.href = '/admin/login';
+  }
+
+  async function request(url: string, options: any = {}) {
+    const res = await fetch(url, { ...options, headers: { 'content-type': 'application/json', ...(options.headers || {}) } });
+    const data = await res.json();
+    if (res.status === 401) { authFail(); throw new Error('unauth'); }
+    if (!data.ok) throw new Error(data.error || '请求失败');
+    return data;
+  }
+
+  const orderStatusMap: any = {
+    pending: { text: '待支付', cls: 'bg-amber-50 text-amber-600 border border-amber-200' },
+    paid: { text: '已付待发', cls: 'bg-rose-50 text-rose-600 border border-rose-200' },
+    shipped: { text: '已发货', cls: 'bg-emerald-50 text-emerald-600 border border-emerald-200' },
+    closed: { text: '已关闭', cls: 'bg-slate-100 text-slate-400 border border-slate-200' },
+  };
+  function esc(s: string) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!)); }
+
+  // ============ Tab 切换 ============
+  document.querySelectorAll('.tab-btn').forEach((btn: any) => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tab-btn').forEach((b: any) => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.tab-panel').forEach((p: any) => p.classList.add('hidden'));
+      document.querySelector('#tab-' + btn.dataset.tab).classList.remove('hidden');
+      load(btn.dataset.tab);
+    };
+  });
+
+  document.querySelectorAll('.status-btn').forEach((btn: any) => {
+    btn.onclick = () => {
+      document.querySelectorAll('.status-btn').forEach((b: any) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentStatus = btn.dataset.status;
+      load('orders');
+    };
+  });
+
+  // ============ 加载数据 ============
+  async function load(tab: string) {
+    if (tab === 'products') return loadProducts();
+    if (tab === 'orders') return loadOrders();
+  }
+
+  async function loadProducts() {
+    const el = document.querySelector('#product-list') as HTMLElement;
+    el.innerHTML = '加载中…';
+    try {
+      const data = await request('/api/admin/products');
+      const list = data.data || [];
+      if (!list.length) { el.innerHTML = '<div class="text-center text-slate-400 py-12">还没有商品，点击右上角新增。</div>'; return; }
+      el.innerHTML = list.map((p: any) => `
+        <div class="card p-4 flex items-start gap-4">
+          <div class="w-16 h-16 rounded-lg overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+            ${p.cover ? `<img src="${esc(p.cover)}" class="w-full h-full object-cover" />` : '<span class="text-2xl">🌸</span>'}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="font-semibold text-slate-800 line-clamp-1">${esc(p.title)}</span>
+              <span class="badge ${p.status === 1 ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-slate-100 text-slate-400'}">${p.status === 1 ? '上架' : '下架'}</span>
+            </div>
+            <div class="text-sm text-slate-500 mt-1">${(Number(p.price)/1e6).toFixed(2)} USDT · 库存 ${p.stock} · 已售 ${p.sold} · ${esc(p.category || '未分类')}</div>
+          </div>
+          <div class="flex flex-col gap-2 shrink-0">
+            <button onclick="openEdit(${p.id})" class="btn-ghost !py-1.5 !px-3 text-xs">编辑</button>
+            <button onclick="toggleStatus(${p.id}, ${p.status})" class="btn-ghost !py-1.5 !px-3 text-xs">${p.status === 1 ? '下架' : '上架'}</button>
+            <button onclick="delProduct(${p.id})" class="btn-ghost !py-1.5 !px-3 text-xs !text-rose-500 !border-rose-300">删除</button>
+          </div>
+        </div>
+      `).join('');
+    } catch { el.innerHTML = '<div class="text-center text-rose-400 py-12">加载失败</div>'; }
+  }
+
+  async function loadOrders() {
+    const el = document.querySelector('#order-list') as HTMLElement;
+    el.innerHTML = '加载中…';
+    try {
+      const data = await request(`/api/admin/orders?status=${currentStatus}`);
+      const list = data.data || [];
+      if (!list.length) { el.innerHTML = '<div class="text-center text-slate-400 py-12">暂无订单</div>'; return; }
+      el.innerHTML = list.map((o: any) => {
+        const st = orderStatusMap[o.status] || orderStatusMap.closed;
+        return `
+        <div class="card p-4 flex flex-wrap items-center gap-3">
+          <code class="text-xs text-slate-400">${esc(o.id)}</code>
+          <span class="badge ${st.cls}">${st.text}</span>
+          <span class="font-semibold text-slate-800">${esc(o.product_title)}</span>
+          <span class="text-sm text-slate-500">×${o.qty}</span>
+          <span class="text-rose-500 font-semibold">${(Number(o.total_price)/1e6).toFixed(2)} USDT</span>
+          <span class="text-xs text-slate-400 hidden md:inline">${esc(o.address.slice(0, 16))}…</span>
+          <span class="text-xs text-slate-400">${esc((o.created_at || '').slice(0, 16).replace('T',' '))}</span>
+          <div class="ml-auto flex gap-2">
+            ${
+              o.status === 'paid' || o.status === 'pending'
+                ? `<button onclick="reship('${o.id}')" class="btn-ghost !py-1.5 !px-3 text-xs">补发</button>`
+                : ''
+            }
+            <button onclick="copyTx(\`${esc(o.tx_hash || '')}\`)" class="btn-ghost !py-1.5 !px-3 text-xs" title="复制交易哈希">Tx</button>
+          </div>
+        </div>`;
+      }).join('');
+    } catch { el.innerHTML = '<div class="text-center text-rose-400 py-12">加载失败</div>'; }
+  }
+
+  // ============ 弹窗 ============
+  function openNew() {
+    editingId = null;
+    (document.querySelector('#modal-title') as any).textContent = '新增商品';
+    (document.querySelector('#e-id') as any).value = '';
+    (document.querySelector('#e-title') as any).value = '';
+    (document.querySelector('#e-price') as any).value = '';
+    (document.querySelector('#e-category') as any).value = '';
+    (document.querySelector('#e-cover') as any).value = '';
+    (document.querySelector('#e-desc') as any).value = '';
+    (document.querySelector('#e-status') as any).checked = true;
+    (document.querySelector('#modal') as any).classList.remove('hidden');
+  }
+
+  function openEdit(id: number) {
+    (
+      async () => {
+        const data = await request('/api/admin/products');
+        const p = (data.data || []).find((x: any) => x.id === id);
+        if (!p) return;
+        editingId = id;
+        (document.querySelector('#modal-title') as any).textContent = '编辑商品';
+        (document.querySelector('#e-id') as any).value = String(p.id);
+        (document.querySelector('#e-title') as any).value = p.title;
+        (document.querySelector('#e-price') as any).value = (Number(p.price)/1e6).toFixed(2);
+        (document.querySelector('#e-category') as any).value = p.category;
+        (document.querySelector('#e-cover') as any).value = p.cover;
+        (document.querySelector('#e-desc') as any).value = p.description;
+        (document.querySelector('#e-status') as any).checked = p.status === 1;
+        (document.querySelector('#modal') as any).classList.remove('hidden');
+      }
+    )();
+  }
+
+  function closeModal() { (document.querySelector('#modal') as any).classList.add('hidden'); }
+
+  async function saveProduct() {
+    const title = (document.querySelector('#e-title') as any).value.trim();
+    const price = (document.querySelector('#e-price') as any).value;
+    if (!title) return alert('请填写标题');
+    if (!price) return alert('请填写价格');
+    const payload = {
+      title,
+      price,
+      category: (document.querySelector('#e-category') as any).value,
+      cover: (document.querySelector('#e-cover') as any).value,
+      description: (document.querySelector('#e-desc') as any).value,
+      status: (document.querySelector('#e-status') as any).checked ? 1 : 0,
+    };
+    try {
+      let savedId = editingId;
+      if (editingId) { await request('/api/admin/product', { method: 'POST', body: JSON.stringify({ id: editingId, ...payload }) }); }
+      else {
+        const created = await request('/api/admin/products', { method: 'POST', body: JSON.stringify(payload) });
+        savedId = created.data.id;
+        editingId = savedId;
+      }
+      closeModal();
+      loadProducts();
+    } catch (e: any) { alert(e.message); }
+  }
+
+  async function toggleStatus(id: number, cur: number) {
+    try {
+      await request('/api/admin/product', { method: 'POST', body: JSON.stringify({ id, status: cur === 1 ? 0 : 1 }) });
+      loadProducts();
+    } catch (e: any) { alert(e.message); }
+  }
+
+  async function delProduct(id: number) {
+    if (!confirm('删除将同时删除该商品所有卡密，确定？')) return;
+    await fetch('/api/admin/product/' + id, { method: 'DELETE' });
+    loadProducts();
+  }
+
+  async function copyTx(tx: string) {
+    if (!tx) return alert('无交易哈希');
+    try { await navigator.clipboard.writeText(tx); alert('已复制交易哈希'); }
+    catch { alert(tx); }
+  }
+
+  async function reship(orderId: string) {
+    if (!confirm('确认补发卡密？')) return;
+    try { await request('/api/admin/orders', { method: 'POST', body: JSON.stringify({ order_id: orderId }) }); alert('已补发'); loadOrders(); }
+    catch (e: any) { alert(e.message); }
+  }
+
+  // ============ 卡密导入 ============
+  function openImport() {
+    currentImportProduct = editingId;
+    if (!currentImportProduct) { alert('请先编辑一个已保存的商品再导入卡密'); return; }
+    (document.querySelector('#import-text') as any).value = '';
+    (document.querySelector('#import-msg') as any).textContent = '';
+    (document.querySelector('#import-modal') as any).classList.remove('hidden');
+  }
+  function closeImport() { (document.querySelector('#import-modal') as any).classList.add('hidden'); }
+
+  async function importCards() {
+    const text = (document.querySelector('#import-text') as any).value;
+    if (!currentImportProduct) return;
+    if (!text.trim()) return alert('卡密内容为空');
+    try {
+      const data = await request('/api/admin/cards/import', { method: 'POST', body: JSON.stringify({ product_id: currentImportProduct, text }) });
+      (document.querySelector('#import-msg') as any).textContent = `✅ 成功导入 ${data.data.count} 条卡密`;
+      setTimeout(closeImport, 1200);
+      loadProducts();
+    } catch (e: any) { (document.querySelector('#import-msg') as any).textContent = e.message; }
+  }
+
+  // 把内联 onclick 需要的函数挂到全局
+  (window as any).openNew = openNew;
+  (window as any).openEdit = openEdit;
+  (window as any).toggleStatus = toggleStatus;
+  (window as any).delProduct = delProduct;
+  (window as any).saveProduct = saveProduct;
+  (window as any).closeModal = closeModal;
+  (window as any).openImport = openImport;
+  (window as any).closeImport = closeImport;
+  (window as any).importCards = importCards;
+  (window as any).reship = reship;
+  (window as any).copyTx = copyTx;
+
+  // 初始加载
+  loadProducts();
+</script>

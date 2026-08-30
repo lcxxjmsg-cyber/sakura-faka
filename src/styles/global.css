@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply font-body antialiased m-0 text-slate-700 min-h-screen;
+  /* 背景：二次元图 + 底部白色渐变覆盖，参考 faka.wiki */
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.78) 70%, rgba(255,255,255,0.96) 100%),
+    url('/img/bg.svg');
+  background-size: cover, cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-attachment: fixed, fixed;
+  min-height: 100vh;
+}
+
+a { color: inherit; }
+* { box-sizing: border-box; }
+img { max-width: 100%; display: block; }
+
+/* 自定义滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(180, 180, 200, 0.5); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(150, 150, 170, 0.7); }
+
+/* 组件复用类 */
+@layer components {
+  /* 毛玻璃面板 —— 核心视觉 */
+  .glass {
+    @apply border border-white/60 rounded-xl2 shadow-[0_8px_32px_rgba(0,0,0,0.08)];
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  }
+  .card {
+    @apply rounded-xl2 border border-white/70;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-xl px-5 py-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-sakura-400/50 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-sakura {
+    @apply btn text-white;
+    background-image: linear-gradient(135deg, #ff6b94, #f7406f 50%, #e01b55);
+    box-shadow: 0 8px 20px -6px rgba(247, 64, 111, 0.55);
+  }
+  .btn-sakura:hover { filter: brightness(1.06); transform: translateY(-1px); }
+  .btn-ghost {
+    @apply btn text-rose-500 border border-rose-300/70 bg-white/70;
+  }
+  .btn-ghost:hover { @apply bg-rose-50; }
+  .input {
+    @apply w-full rounded-xl px-4 py-3 text-slate-800 bg-white border border-slate-200 focus:border-rose-400/70 focus:ring-2 focus:ring-rose-400/20 outline-none placeholder:text-slate-400 transition;
+  }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .panel-header {
+    @apply flex items-center gap-2 px-5 py-3.5 border-b border-slate-100 text-slate-800 font-semibold;
+  }
+}
