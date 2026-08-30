@@ -55,8 +55,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 
 -- 记录已分配的 HD 子地址 index，用于加速地址分配
 CREATE TABLE IF NOT EXISTS orders_index (
-  id     INTEGER PRIMARY KEY,               -- 恒为1
-  "index"  INTEGER NOT NULL DEFAULT -1
+  id          INTEGER PRIMARY KEY,          -- 恒为1
+  last_index  INTEGER NOT NULL DEFAULT -1
 );
 
 CREATE TABLE IF NOT EXISTS settings (

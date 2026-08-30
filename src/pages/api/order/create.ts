@@ -15,7 +15,11 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
 
   if (!productId || !Number.isFinite(productId)) return apiErr('请选择商品');
   if (!Number.isInteger(qty)) return apiErr('数量需为整数');
-  const result = await createOrder(env, productId, qty, email);
-  if (!result.ok) return apiErr(result.error);
-  return apiOk(result.order);
+  try {
+    const result = await createOrder(env, productId, qty, email);
+    if (!result.ok) return apiErr(result.error);
+    return apiOk(result.order);
+  } catch (e: any) {
+    return apiErr('下单异常: ' + (e?.message || String(e)), 500);
+  }
 };

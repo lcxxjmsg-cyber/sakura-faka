@@ -14,7 +14,7 @@ export default defineConfig({
   integrations: [tailwind({ applyBaseStyles: false })],
   vite: {
     ssr: {
-      external: ['hono', 'ethers'],
+      external: ['hono'],
     },
   },
 });

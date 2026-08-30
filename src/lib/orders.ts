@@ -31,7 +31,7 @@ export async function createOrder(
   // 从已用最大 index 之后开始寻找未占用子地址（避免 O(N²) 全表扫描）
   let address = '';
   const maxUsed = await db
-    .prepare('SELECT MAX(`index`) AS m FROM orders_index')
+    .prepare('SELECT MAX(last_index) AS m FROM orders_index')
     .first<{ m: number | null }>();
   let index = (maxUsed?.m ?? -1) + 1;
   const MAX_INDEX = 1000000;
@@ -79,7 +79,7 @@ export async function createOrder(
   if (!order) return { ok: false, error: '订单创建失败' };
   // 记录已使用的地址 index，加速下次分配
   await db
-    .prepare('INSERT OR REPLACE INTO orders_index (id, `index`) VALUES (1, ?)')
+    .prepare('INSERT OR REPLACE INTO orders_index (id, last_index) VALUES (1, ?)')
     .bind(index)
     .run();
   return { ok: true, order };
