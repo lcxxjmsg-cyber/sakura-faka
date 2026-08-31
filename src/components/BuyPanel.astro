@@ -72,11 +72,11 @@ const fmtPrice = formatUsdt(price);
   .prose code { background: rgba(244, 63, 94, 0.08); color: #be123c; padding: 2px 6px; border-radius: 4px; }
 </style>
 
-<script>
-  const pid = {id};
-  const priceMin = BigInt({price});
+<script is:inline define:vars={{ id, price }}>
+  const pid = id;
+  const priceMin = BigInt(price);
 
-  const $ = (s: string) => document.querySelector(s);
+  const $ = (s) => document.querySelector(s);
   const buyBtn = $('#buy');
   const qtyEl = $('#qty');
   const totalEl = $('#total');
@@ -97,13 +97,13 @@ const fmtPrice = formatUsdt(price);
   let orderId = '';
   let viewToken = '';
 
-  function fmtFull(minUnit: string) { return (Number(minUnit) / Number(mult)).toString(); }
+  function fmtFull(minUnit) { return (Number(minUnit) / Number(mult)).toString(); }
   function updateTotal() {
     totalEl.textContent = `${fmtFull((priceMin * BigInt(qty)).toString())} USDT`;
   }
   $('#minus').onclick = () => { qty = Math.max(1, qty - 1); qtyEl.value = qty; updateTotal(); };
   $('#plus').onclick = () => { qty = Math.min(10, qty + 1); qtyEl.value = qty; updateTotal(); };
-  qtyEl.oninput = () => { qty = Math.min(10, Math.max(1, parseInt(qtyEl.value) || 1)); updateTotal(); };
+  qtyEl.oninput = () => { qty = Math.min(10, Math.max(1, parseInt(qtyEl.value) || 1)); qtyEl.value = qty; updateTotal(); };
 
   $('#copy-addr').onclick = async () => {
     try {

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS products (
   category    TEXT DEFAULT '',              -- 分类
   status      INTEGER NOT NULL DEFAULT 1,   -- 1上架 0下架
   sort        INTEGER NOT NULL DEFAULT 0,   -- 排序权重
+  delivery_type TEXT NOT NULL DEFAULT 'text',
   created_at  TEXT DEFAULT (datetime('now')),
   updated_at  TEXT DEFAULT (datetime('now'))
 );
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS cards (
 
 CREATE INDEX IF NOT EXISTS idx_cards_product ON cards(product_id);
 CREATE INDEX IF NOT EXISTS idx_cards_status ON cards(status, product_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cards_product_value ON cards(product_id, card);
 
 CREATE TABLE IF NOT EXISTS orders (
   id          TEXT PRIMARY KEY,             -- 订单号(唯一)
@@ -52,6 +54,7 @@ CREATE TABLE IF NOT EXISTS orders (
 
 CREATE INDEX IF NOT EXISTS idx_orders_address ON orders(address);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_tx_hash ON orders(tx_hash) WHERE tx_hash IS NOT NULL AND tx_hash <> '';
 
 -- 记录已分配的 HD 子地址 index，用于加速地址分配
 CREATE TABLE IF NOT EXISTS orders_index (

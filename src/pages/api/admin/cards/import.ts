@@ -28,14 +28,17 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   if (!keys.length) return apiErr('未识别到卡密');
 
   // 分批插入 + 追加库存（D1 batch 单次 ≤ 100 条，留 1 条给库存更新故每批 ≤ 79 条）
-  const insers = keys.map((key: string) =>
-    env.DB.prepare('INSERT INTO cards (product_id, card) VALUES (?, ?)').bind(productId, key),
+  const inserts = keys.map((key: string) =>
+    env.DB.prepare('INSERT OR IGNORE INTO cards (product_id, card) VALUES (?, ?)').bind(productId, key),
   );
   const CHUNK = 79;
-  for (let i = 0; i < insers.length; i += CHUNK) {
-    await env.DB.batch(insers.slice(i, i + CHUNK));
+  let imported = 0;
+  for (let i = 0; i < inserts.length; i += CHUNK) {
+    const result = await env.DB.batch(inserts.slice(i, i + CHUNK));
+    imported += result.filter((x: any) => (x.meta?.changes ?? 0) > 0).length;
   }
-  await env.DB.prepare('UPDATE products SET stock=stock+? WHERE id=?').bind(keys.length, productId).run();
+  await env.DB.prepare('UPDATE products SET stock=(SELECT COUNT(*) FROM cards WHERE product_id=? AND status=0), updated_at=? WHERE id=?')
+    .bind(productId, new Date().toISOString(), productId).run();
 
-  return apiOk({ count: keys.length });
+  return apiOk({ count: imported, skipped: keys.length - imported });
 };

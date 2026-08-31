@@ -123,6 +123,7 @@ export async function checkUsdtPayment(
   address: string,
   required: string,    // 最小单位整数
   minConfirmations: number,
+  createdAt?: string,
 ): Promise<TronPaymentCheck> {
   const notFound: TronPaymentCheck = {
     found: false,
@@ -158,8 +159,10 @@ export async function checkUsdtPayment(
         continue;
       }
       const requiredBig = BigInt(required);
-      const minOk = val >= (requiredBig * 95n) / 100n;
+      // 收款地址按订单独立分配，必须足额，避免少付也触发自动发货。
+      const minOk = val >= requiredBig;
       if (!minOk) continue;
+      if (createdAt && tx.block_timestamp && Number(tx.block_timestamp) < Date.parse(createdAt) - 120000) continue;
 
       if (val > bestValue) {
         bestValue = val;

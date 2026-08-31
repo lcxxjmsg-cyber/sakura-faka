@@ -7,6 +7,7 @@ export type Product = {
   stock: number;
   sold: number;
   category: string;
+  delivery_type?: 'text' | 'json' | 'manual';
   status: number;
   sort: number;
   created_at: string;

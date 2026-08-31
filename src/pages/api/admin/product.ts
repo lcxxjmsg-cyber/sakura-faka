@@ -23,6 +23,9 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   if (body.cover !== undefined) { fields.push('cover=?'); values.push(String(body.cover)); }
   if (body.category !== undefined) { fields.push('category=?'); values.push(String(body.category)); }
   if (body.status !== undefined) { fields.push('status=?'); values.push(Number(body.status)); }
+  if (body.delivery_type !== undefined && ['text', 'json', 'manual'].includes(body.delivery_type)) {
+    fields.push('delivery_type=?'); values.push(body.delivery_type);
+  }
   if (body.sort !== undefined) { fields.push('sort=?'); values.push(Number(body.sort)); }
   if (body.price !== undefined) {
     try { fields.push('price=?'); values.push(parseUsdt(String(body.price))); }

@@ -7,28 +7,19 @@ pages_build_output_dir = "./dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "faka-db"
-database_id = "REPLACE_WITH_YOUR_D1_ID"
+database_id = "750ddc20-8086-464f-bf71-d52e06ff2d86"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "REPLACE_WITH_YOUR_KV_ID"
+id = "40c2abbaa1984d57a9a3dc89d91cc3d9"
 
 [vars]
 # ===== 站点配置 =====
 SITE_NAME = "樱花市集"
 SITE_WELCOME = "欢迎来到二次元自助服务商店"
-# 后台登录密码 (部署前必须修改)
-ADMIN_PASSWORD = "CHANGE_ME"
-# ===== USDT(TRC-20) 收款配置 =====
-# HD 助记词 (12/24个单词) — 保留为空，部署前通过 Cloudflare 控制台设置 secret，切勿写入此文件！
-TRON_MNEMONIC = ""
-# 主收款账户地址 (用于归集)
-TRON_MASTER_ADDRESS = ""
-# 确认数阈值
+# ===== 确认数阈值 =====
 TRON_CONFIRMATIONS = "19"
 # 轮询间隔 (秒)
 POLL_INTERVAL = "60"
 # ===== TRON 链上 RPC =====
 TRON_RPC_URL = "https://api.trongrid.io"
-# Cron 触发密钥 (调用 /api/cron 时需带 x-cron-secret 头，留空且非 Cloudflare Cron 调用则拒绝)
-CRON_SECRET = "CHANGE_ME_cron_secret"

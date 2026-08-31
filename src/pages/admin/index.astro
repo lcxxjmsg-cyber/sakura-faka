@@ -227,19 +227,23 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
   function openEdit(id: number) {
     (
       async () => {
-        const data = await request('/api/admin/products');
-        const p = (data.data || []).find((x: any) => x.id === id);
-        if (!p) return;
-        editingId = id;
-        (document.querySelector('#modal-title') as any).textContent = '编辑商品';
-        (document.querySelector('#e-id') as any).value = String(p.id);
-        (document.querySelector('#e-title') as any).value = p.title;
-        (document.querySelector('#e-price') as any).value = (Number(p.price)/1e6).toFixed(2);
-        (document.querySelector('#e-category') as any).value = p.category;
-        (document.querySelector('#e-cover') as any).value = p.cover;
-        (document.querySelector('#e-desc') as any).value = p.description;
-        (document.querySelector('#e-status') as any).checked = p.status === 1;
-        (document.querySelector('#modal') as any).classList.remove('hidden');
+        try {
+          const data = await request('/api/admin/products');
+          const p = (data.data || []).find((x: any) => x.id === id);
+          if (!p) return;
+          editingId = id;
+          (document.querySelector('#modal-title') as any).textContent = '编辑商品';
+          (document.querySelector('#e-id') as any).value = String(p.id);
+          (document.querySelector('#e-title') as any).value = p.title;
+          (document.querySelector('#e-price') as any).value = (Number(p.price)/1e6).toFixed(2);
+          (document.querySelector('#e-category') as any).value = p.category;
+          (document.querySelector('#e-cover') as any).value = p.cover;
+          (document.querySelector('#e-desc') as any).value = p.description;
+          (document.querySelector('#e-status') as any).checked = p.status === 1;
+          (document.querySelector('#modal') as any).classList.remove('hidden');
+        } catch (e: any) {
+          alert(e.message || '编辑失败');
+        }
       }
     )();
   }
@@ -281,8 +285,10 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
 
   async function delProduct(id: number) {
     if (!confirm('删除将同时删除该商品所有卡密，确定？')) return;
-    await fetch('/api/admin/product/' + id, { method: 'DELETE' });
-    loadProducts();
+    try {
+      await request('/api/admin/product/' + id, { method: 'DELETE' });
+      loadProducts();
+    } catch (e: any) { alert(e.message || '删除失败'); }
   }
 
   async function copyTx(tx: string) {

@@ -34,13 +34,14 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   const description = String(body.description || '');
   const cover = String(body.cover || '');
   const category = String(body.category || '');
+  const deliveryType = ['text', 'json', 'manual'].includes(body.delivery_type) ? body.delivery_type : 'text';
   const sort = Number(body.sort ?? 0);
   const status = body.status === 0 ? 0 : 1;
 
   const res = await env.DB.prepare(
-    `INSERT INTO products (title, description, cover, price, category, sort, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO products (title, description, cover, price, category, delivery_type, sort, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(title, description, cover, price, category, sort, status)
+    .bind(title, description, cover, price, category, deliveryType, sort, status)
     .run();
   return apiOk({ id: res.meta.last_row_id });
 };

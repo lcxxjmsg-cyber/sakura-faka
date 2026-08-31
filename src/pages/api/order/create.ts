@@ -17,7 +17,7 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   if (!Number.isInteger(qty)) return apiErr('数量需为整数');
   try {
     const result = await createOrder(env, productId, qty, email);
-    if (!result.ok) return apiErr(result.error);
+    if (result.ok === false) return apiErr(result.error);
     return apiOk(result.order);
   } catch (e: any) {
     return apiErr('下单异常: ' + (e?.message || String(e)), 500);

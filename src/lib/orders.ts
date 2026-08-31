@@ -122,7 +122,7 @@ export async function processPendingOrders(env: StoreEnv): Promise<number> {
       continue;
     }
 
-    const check = await checkUsdtPayment(rpcUrl, order.address, order.total_price, minConfirm);
+    const check = await checkUsdtPayment(rpcUrl, order.address, order.total_price, minConfirm, order.created_at);
     if (check.found && check.confirmed) {
       // 先占用卡密并发货
       const shipped = await fulfillOrder(env, order, check.txHash, check.confirmations);
@@ -175,19 +175,24 @@ export async function fulfillOrder(
   const updResult = await cardStmt.bind(order.id, new Date().toISOString(), ...cardIds).run();
   // 实际占用不足，说明有卡被并发抢走，本次放弃（避免重复发同一张卡）
   if ((updResult.meta?.changes ?? 0) < cardIds.length) {
+    // 并发抢卡时可能只占到一部分，必须释放本次已占用的卡，避免库存泄漏。
+    await db.prepare(`UPDATE cards SET status=0, order_id=NULL, sold_at=NULL WHERE order_id=? AND status=1`).bind(order.id).run();
     return false;
   }
 
   let shippedOk = false;
   try {
     await db.batch([
-      db.prepare(`UPDATE products SET sold=sold+? WHERE id=?`).bind(order.qty, order.product_id),
+      db.prepare(`UPDATE products SET sold=sold+?, stock=MAX(stock-?, 0), updated_at=? WHERE id=?`)
+        .bind(order.qty, order.qty, new Date().toISOString(), order.product_id),
       db.prepare(
         `UPDATE orders SET status='shipped', tx_hash=?, tx_confirm=?, card_ids=?, paid_at=?, expired_at=NULL WHERE id=? AND status IN ('pending','paid')`,
       ).bind(txHash, confirmations, idList, new Date().toISOString(), order.id),
     ]);
     shippedOk = true;
   } catch {
+    // 订单写入失败时回滚本次已占用资源，避免出现“库存减少但订单未发货”。
+    await db.prepare(`UPDATE cards SET status=0, order_id=NULL, sold_at=NULL WHERE order_id=? AND status=1`).bind(order.id).run();
     shippedOk = false;
   }
   return shippedOk;
