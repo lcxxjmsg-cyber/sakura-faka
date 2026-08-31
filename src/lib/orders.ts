@@ -115,6 +115,11 @@ export async function checkOrderPayment(env: StoreEnv, orderId: string): Promise
   }
   const check = await checkUsdtPayment(env.TRON_RPC_URL, order.address, order.total_price, Number(env.TRON_CONFIRMATIONS || '1'), order.created_at);
   if (!check.found) return { ok: true, status: 'pending', confirmations: 0 };
+  await env.DB.prepare(`
+    INSERT INTO payment_transactions (tx_hash, order_id, from_address, to_address, amount, confirmations, status, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(tx_hash) DO UPDATE SET confirmations=excluded.confirmations, status=excluded.status, updated_at=excluded.updated_at
+  `).bind(check.txHash, order.id, check.fromAddress, order.address, check.value, check.confirmations, check.confirmed ? 'confirmed' : 'detected', new Date().toISOString()).run();
   if (!check.confirmed) {
     await env.DB.prepare(`UPDATE orders SET tx_hash=?, tx_confirm=? WHERE id=? AND status='pending'`).bind(check.txHash, check.confirmations, order.id).run();
     return { ok: true, status: 'paid', confirmations: check.confirmations };
@@ -140,6 +145,13 @@ export async function processPendingOrders(env: StoreEnv): Promise<number> {
 
   let processed = 0;
   for (const order of pending) {
+    try {
+      const checked = await checkOrderPayment(env, order.id);
+      if (checked.status === 'shipped') processed++;
+      continue;
+    } catch {
+      // Keep processing the remaining orders if one check fails.
+    }
     // 已标记 paid 的订单说明是缺卡补发场景，直接尝试补卡，不再查链
     if (order.status === 'paid') {
       const shipped = await fulfillOrder(env, order, order.tx_hash, order.tx_confirm);

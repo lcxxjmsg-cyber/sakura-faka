@@ -116,6 +116,7 @@ export type TronPaymentCheck = {
   value: string; // 最小单位整数
   confirmed: boolean;
   confirmations: number;
+  fromAddress: string;
 };
 
 export async function checkUsdtPayment(
@@ -131,6 +132,7 @@ export async function checkUsdtPayment(
     value: '0',
     confirmed: false,
     confirmations: 0,
+    fromAddress: '',
   };
 
   try {
@@ -180,6 +182,7 @@ export async function checkUsdtPayment(
       value: bestValue.toString(),
       confirmed: confirmations >= minConfirmations,
       confirmations,
+      fromAddress: best.from || '',
     };
   } catch (e) {
     return notFound;
