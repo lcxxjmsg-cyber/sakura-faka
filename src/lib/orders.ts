@@ -111,6 +111,8 @@ export async function checkOrderPayment(env: StoreEnv, orderId: string, viewToke
   if (viewToken && order.view_token !== viewToken) return { ok: false, error: '无权操作此订单' };
   if (order.status === 'shipped' || order.status === 'closed') return { ok: true, status: order.status, confirmations: order.tx_confirm };
   if (order.status === 'paid') {
+    const product = await getProduct(env.DB, order.product_id);
+    if (product?.delivery_type === 'manual') return { ok: true, status: 'paid', confirmations: order.tx_confirm };
     const shipped = await fulfillOrder(env, order, order.tx_hash, order.tx_confirm);
     return shipped ? { ok: true, status: 'shipped', confirmations: order.tx_confirm } : { ok: false, status: 'paid', confirmations: order.tx_confirm, error: '已支付但库存不足，等待后台处理' };
   }
@@ -127,6 +129,11 @@ export async function checkOrderPayment(env: StoreEnv, orderId: string, viewToke
   `).bind(check.txHash, order.id, check.fromAddress, order.address, check.value, check.confirmations, check.confirmed ? 'confirmed' : 'detected', new Date().toISOString()).run();
   if (!check.confirmed) {
     await env.DB.prepare(`UPDATE orders SET tx_hash=?, tx_confirm=? WHERE id=? AND status='pending'`).bind(check.txHash, check.confirmations, order.id).run();
+    return { ok: true, status: 'paid', confirmations: check.confirmations };
+  }
+  const product = await getProduct(env.DB, order.product_id);
+  if (product?.delivery_type === 'manual') {
+    await env.DB.prepare(`UPDATE orders SET status='paid', tx_hash=?, tx_confirm=? WHERE id=? AND status='pending'`).bind(check.txHash, check.confirmations, order.id).run();
     return { ok: true, status: 'paid', confirmations: check.confirmations };
   }
   const shipped = await fulfillOrder(env, order, check.txHash, check.confirmations);

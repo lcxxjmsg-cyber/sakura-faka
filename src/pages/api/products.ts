@@ -15,6 +15,7 @@ export const GET: APIRoute = async ({ request, locals }: any) => {
     price: p.price,
     desc: (p.description || '').slice(0, 120),
     category: p.category,
+    delivery_type: p.delivery_type || 'text',
     stock: p.stock,
     sold: p.sold,
   }));

@@ -56,6 +56,14 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
         <input id="e-category" class="input mt-1" placeholder="如：会员/礼品/游戏" />
       </div>
       <div>
+        <label class="text-sm text-slate-500">交付类型</label>
+        <select id="e-delivery-type" class="input mt-1">
+          <option value="text">文本 / 卡密 / AppID</option>
+          <option value="json">JSON 资源</option>
+          <option value="manual">人工处理</option>
+        </select>
+      </div>
+      <div>
         <label class="text-sm text-slate-500">封面图 URL</label>
         <input id="e-cover" class="input mt-1" placeholder="https://…（留空用默认樱花图）" />
       </div>
@@ -167,7 +175,7 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
               <span class="font-semibold text-slate-800 line-clamp-1">${esc(p.title)}</span>
               <span class="badge ${p.status === 1 ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-slate-100 text-slate-400'}">${p.status === 1 ? '上架' : '下架'}</span>
             </div>
-            <div class="text-sm text-slate-500 mt-1">${(Number(p.price)/1e6).toFixed(2)} USDT · 库存 ${p.stock} · 已售 ${p.sold} · ${esc(p.category || '未分类')}</div>
+            <div class="text-sm text-slate-500 mt-1">${(Number(p.price)/1e6).toFixed(2)} USDT · 库存 ${p.stock} · 已售 ${p.sold} · ${esc(p.category || '未分类')} · ${p.delivery_type === 'json' ? 'JSON资源' : p.delivery_type === 'manual' ? '人工处理' : '文本资源'}</div>
           </div>
           <div class="flex flex-col gap-2 shrink-0">
             <button onclick="openEdit(${p.id})" class="btn-ghost !py-1.5 !px-3 text-xs">编辑</button>
@@ -218,6 +226,7 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
     (document.querySelector('#e-title') as any).value = '';
     (document.querySelector('#e-price') as any).value = '';
     (document.querySelector('#e-category') as any).value = '';
+    (document.querySelector('#e-delivery-type') as any).value = 'text';
     (document.querySelector('#e-cover') as any).value = '';
     (document.querySelector('#e-desc') as any).value = '';
     (document.querySelector('#e-status') as any).checked = true;
@@ -237,6 +246,7 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
           (document.querySelector('#e-title') as any).value = p.title;
           (document.querySelector('#e-price') as any).value = (Number(p.price)/1e6).toFixed(2);
           (document.querySelector('#e-category') as any).value = p.category;
+          (document.querySelector('#e-delivery-type') as any).value = p.delivery_type || 'text';
           (document.querySelector('#e-cover') as any).value = p.cover;
           (document.querySelector('#e-desc') as any).value = p.description;
           (document.querySelector('#e-status') as any).checked = p.status === 1;
@@ -259,6 +269,7 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
       title,
       price,
       category: (document.querySelector('#e-category') as any).value,
+      delivery_type: (document.querySelector('#e-delivery-type') as any).value,
       cover: (document.querySelector('#e-cover') as any).value,
       description: (document.querySelector('#e-desc') as any).value,
       status: (document.querySelector('#e-status') as any).checked ? 1 : 0,
