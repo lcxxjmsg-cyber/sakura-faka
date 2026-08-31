@@ -4,9 +4,6 @@ compatibility_date = "2025-03-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "./dist"
 
-[triggers]
-crons = ["*/1 * * * *"]
-
 [[d1_databases]]
 binding = "DB"
 database_name = "faka-db"
