@@ -92,6 +92,37 @@ export async function queryOrder(env: StoreEnv, orderId: string): Promise<Order 
   return getOrder(env.DB, orderId);
 }
 
+export async function cancelOrder(env: StoreEnv, orderId: string): Promise<{ ok: boolean; error?: string }> {
+  const result = await env.DB.prepare(
+    `UPDATE orders SET status='closed', expired_at=? WHERE id=? AND status='pending'`,
+  ).bind(new Date().toISOString(), orderId).run();
+  return (result.meta?.changes ?? 0) > 0
+    ? { ok: true }
+    : { ok: false, error: '订单不存在、已支付或已关闭' };
+}
+
+export async function checkOrderPayment(env: StoreEnv, orderId: string): Promise<{ ok: boolean; status?: string; confirmations?: number; error?: string }> {
+  const order = await getOrder(env.DB, orderId);
+  if (!order) return { ok: false, error: '订单不存在' };
+  if (order.status === 'shipped' || order.status === 'closed') return { ok: true, status: order.status, confirmations: order.tx_confirm };
+  if (order.status === 'paid') {
+    const shipped = await fulfillOrder(env, order, order.tx_hash, order.tx_confirm);
+    return shipped ? { ok: true, status: 'shipped', confirmations: order.tx_confirm } : { ok: false, status: 'paid', confirmations: order.tx_confirm, error: '已支付但库存不足，等待后台处理' };
+  }
+  if (order.expired_at && new Date(order.expired_at).getTime() < Date.now()) {
+    await env.DB.prepare(`UPDATE orders SET status='closed' WHERE id=? AND status='pending'`).bind(order.id).run();
+    return { ok: true, status: 'closed', error: '订单已过期' };
+  }
+  const check = await checkUsdtPayment(env.TRON_RPC_URL, order.address, order.total_price, Number(env.TRON_CONFIRMATIONS || '1'), order.created_at);
+  if (!check.found) return { ok: true, status: 'pending', confirmations: 0 };
+  if (!check.confirmed) {
+    await env.DB.prepare(`UPDATE orders SET tx_hash=?, tx_confirm=? WHERE id=? AND status='pending'`).bind(check.txHash, check.confirmations, order.id).run();
+    return { ok: true, status: 'paid', confirmations: check.confirmations };
+  }
+  const shipped = await fulfillOrder(env, order, check.txHash, check.confirmations);
+  return shipped ? { ok: true, status: 'shipped', confirmations: check.confirmations } : { ok: false, status: 'paid', confirmations: check.confirmations, error: '支付已确认，但库存不足' };
+}
+
 // ============================================================
 // 支付确认 + 自动发货
 // 在 Worker 定时任务中轮询所有 pending 订单

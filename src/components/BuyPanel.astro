@@ -126,6 +126,7 @@ const fmtPrice = formatUsdt(price);
       if (!data.ok) { tipEl.textContent = data.error || '下单失败'; buyBtn.disabled = false; return; }
       orderId = data.data.id;
       viewToken = data.data.view_token || '';
+      localStorage.setItem('faka:last-order', JSON.stringify({ id: orderId, token: viewToken }));
       showPayPanel(data.data);
       startPolling();
       startCountdown();
@@ -141,6 +142,52 @@ const fmtPrice = formatUsdt(price);
     deliverEl.classList.add('hidden');
     buyBtn.textContent = '等待支付…';
     buyBtn.disabled = true;
+    let actions = document.querySelector('#order-actions');
+    if (!actions) {
+      actions = document.createElement('div');
+      actions.id = 'order-actions';
+      actions.className = 'mt-3 flex gap-2';
+      actions.innerHTML = '<button id="check-payment" class="btn-sakura flex-1 !py-2 text-sm">我已支付，立即检测</button><button id="cancel-order" class="btn-ghost !py-2 text-sm">取消订单</button>';
+      payPanel.appendChild(actions);
+      document.querySelector('#check-payment').onclick = checkNow;
+      document.querySelector('#cancel-order').onclick = cancelCurrent;
+    }
+  }
+
+  async function checkNow() {
+    const button = document.querySelector('#check-payment');
+    button.disabled = true;
+    tipEl.textContent = '正在检测链上支付…';
+    try {
+      const res = await fetch('/api/order/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order_id: orderId }) });
+      const data = await res.json();
+      if (!data.ok) { tipEl.textContent = data.error || '检测失败'; return; }
+      if (data.data.status === 'shipped') { showCards({ id: orderId }); clearPolling(); }
+      else if (data.data.status === 'paid') tipEl.textContent = `已检测到支付，确认数 ${data.data.confirmations || 0}，请稍候`;
+      else if (data.data.status === 'closed') tipEl.textContent = '订单已关闭';
+      else tipEl.textContent = '暂未检测到足额支付，请确认网络和金额';
+    } catch { tipEl.textContent = '检测失败，请稍后重试'; }
+    finally { button.disabled = false; }
+  }
+
+  async function cancelCurrent() {
+    if (!confirm('确定取消这个未支付订单吗？')) return;
+    const res = await fetch('/api/order/cancel', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order_id: orderId }) });
+    const data = await res.json();
+    if (data.ok) { localStorage.removeItem('faka:last-order'); clearPolling(); payPanel.classList.add('hidden'); buyBtn.textContent = '重新下单'; buyBtn.disabled = false; tipEl.textContent = '订单已取消'; }
+    else tipEl.textContent = data.error || '取消失败';
+  }
+
+  async function resumeOrder() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('faka:last-order') || 'null');
+      if (!saved?.id || !saved?.token) return;
+      const res = await fetch(`/api/order/query?id=${encodeURIComponent(saved.id)}`);
+      const data = await res.json();
+      if (!data.ok || data.data.status === 'closed') { localStorage.removeItem('faka:last-order'); return; }
+      orderId = saved.id; viewToken = saved.token; showPayPanel(data.data); startPolling(); startCountdown();
+      if (data.data.status === 'shipped') { showCards(data.data); clearPolling(); }
+    } catch {}
   }
 
   function startCountdown() {
@@ -206,4 +253,5 @@ const fmtPrice = formatUsdt(price);
   }
 
   updateTotal();
+  resumeOrder();
 </script>

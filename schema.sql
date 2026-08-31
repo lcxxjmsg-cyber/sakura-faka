@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS orders (
 
 CREATE INDEX IF NOT EXISTS idx_orders_address ON orders(address);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_address ON orders(address);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_tx_hash ON orders(tx_hash) WHERE tx_hash IS NOT NULL AND tx_hash <> '';
 
 -- 记录已分配的 HD 子地址 index，用于加速地址分配
