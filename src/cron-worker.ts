@@ -1,9 +1,9 @@
-import { processPendingOrders } from './lib/orders';
+import { processPendingOrders, retryPendingEmails } from './lib/orders';
 import type { StoreEnv } from './types';
 
 export default {
   async scheduled(_controller: ScheduledController, env: StoreEnv, ctx: ExecutionContext) {
-    ctx.waitUntil(processPendingOrders(env));
+    ctx.waitUntil(Promise.all([processPendingOrders(env), retryPendingEmails(env)]));
   },
 
   async fetch(request: Request, env: StoreEnv) {

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS orders (
   qty         INTEGER NOT NULL DEFAULT 1,   -- 数量
   total_price TEXT NOT NULL,                -- 应付USDT(最小单位整数)
   address     TEXT NOT NULL,                -- 收款地址(每订单唯一子地址)
+  address_index INTEGER NOT NULL DEFAULT -1,
   status      TEXT NOT NULL DEFAULT 'pending', -- pending/paid/closed/shipped
   tx_hash     TEXT DEFAULT '',              -- 链上交易哈希
   tx_confirm  INTEGER DEFAULT 0,            -- 已确认数

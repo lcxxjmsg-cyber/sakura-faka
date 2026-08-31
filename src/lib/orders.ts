@@ -59,8 +59,8 @@ export async function createOrder(
 
   await db
     .prepare(
-      `INSERT INTO orders (id, product_id, product_title, qty, total_price, address, status, contact_email, view_token, created_at, expired_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+      `INSERT INTO orders (id, product_id, product_title, qty, total_price, address, address_index, status, contact_email, view_token, created_at, expired_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
     )
     .bind(
       orderId,
@@ -69,6 +69,7 @@ export async function createOrder(
       qty,
       totalPrice,
       address,
+      index,
       contactEmail,
       viewToken,
       now.toISOString(),
@@ -256,7 +257,28 @@ export async function fulfillOrder(
     const sent = await sendDeliveryEmail(env, order, (results || []).map((row) => row.card));
     if (sent) await db.prepare(`UPDATE orders SET email_sent_at=? WHERE id=? AND email_sent_at IS NULL`).bind(new Date().toISOString(), order.id).run();
   }
+  if (shippedOk) {
+    await db.prepare(`INSERT INTO sweep_tasks (order_id, source_address, status, note) SELECT ?, ?, 'pending', '等待安全签名服务归集' WHERE NOT EXISTS (SELECT 1 FROM sweep_tasks WHERE order_id=? AND source_address=?)`)
+      .bind(order.id, order.address, order.id, order.address).run();
+  }
   return shippedOk;
+}
+
+export async function retryPendingEmails(env: StoreEnv): Promise<number> {
+  const { results } = await env.DB.prepare(`SELECT * FROM orders WHERE status='shipped' AND contact_email<>'' AND (email_sent_at IS NULL OR email_sent_at='') LIMIT 20`).all<Order>();
+  let sentCount = 0;
+  for (const order of results || []) {
+    if (!order.card_ids) continue;
+    const ids = order.card_ids.split(',').map(Number).filter(Boolean);
+    if (!ids.length) continue;
+    const placeholders = ids.map(() => '?').join(',');
+    const cards = await env.DB.prepare(`SELECT card FROM cards WHERE id IN (${placeholders})`).bind(...ids).all<{ card: string }>();
+    if (await sendDeliveryEmail(env, order, (cards.results || []).map((row) => row.card))) {
+      await env.DB.prepare(`UPDATE orders SET email_sent_at=? WHERE id=? AND email_sent_at IS NULL`).bind(new Date().toISOString(), order.id).run();
+      sentCount++;
+    }
+  }
+  return sentCount;
 }
 
 // ============================================================

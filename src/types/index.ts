@@ -31,6 +31,7 @@ export type Order = {
   qty: number;
   total_price: string; // USDT 最小单位
   address: string;     // 每订单唯一子地址
+  address_index?: number;
   status: 'pending' | 'paid' | 'closed' | 'shipped';
   tx_hash: string;
   tx_confirm: number;
