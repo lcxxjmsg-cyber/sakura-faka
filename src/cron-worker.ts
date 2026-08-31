@@ -8,7 +8,7 @@ export default {
 
   async fetch(request: Request, env: StoreEnv) {
     const expected = env.CRON_SECRET || '';
-    if (expected && request.headers.get('x-cron-secret') !== expected) {
+    if (!expected || request.headers.get('x-cron-secret') !== expected) {
       return new Response('Unauthorized', { status: 401 });
     }
     const processed = await processPendingOrders(env);
