@@ -11,9 +11,11 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   if (!(await allowRate(env, `check:${ip}`, 12, 60))) return apiErr('检测过于频繁，请稍后再试', 429);
   const body = await request.json().catch(() => ({}));
   const orderId = String(body.order_id || '').trim();
+  const viewToken = String(body.view_token || '').trim();
   if (!orderId) return apiErr('缺少订单号');
+  if (!viewToken) return apiErr('缺少订单凭证', 403);
   try {
-    const result = await checkOrderPayment(env, orderId);
+    const result = await checkOrderPayment(env, orderId, viewToken);
     return result.ok ? apiOk(result) : apiErr(result.error || '检测失败', 409);
   } catch {
     return apiErr('暂时无法连接支付网络，请稍后重试', 503);

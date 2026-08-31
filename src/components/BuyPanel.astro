@@ -159,7 +159,7 @@ const fmtPrice = formatUsdt(price);
     button.disabled = true;
     tipEl.textContent = '正在检测链上支付…';
     try {
-      const res = await fetch('/api/order/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order_id: orderId }) });
+      const res = await fetch('/api/order/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order_id: orderId, view_token: viewToken }) });
       const data = await res.json();
       if (!data.ok) { tipEl.textContent = data.error || '检测失败'; return; }
       if (data.data.status === 'shipped') { showCards({ id: orderId }); clearPolling(); }
@@ -172,7 +172,7 @@ const fmtPrice = formatUsdt(price);
 
   async function cancelCurrent() {
     if (!confirm('确定取消这个未支付订单吗？')) return;
-    const res = await fetch('/api/order/cancel', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order_id: orderId }) });
+    const res = await fetch('/api/order/cancel', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order_id: orderId, view_token: viewToken }) });
     const data = await res.json();
     if (data.ok) { localStorage.removeItem('faka:last-order'); clearPolling(); payPanel.classList.add('hidden'); buyBtn.textContent = '重新下单'; buyBtn.disabled = false; tipEl.textContent = '订单已取消'; }
     else tipEl.textContent = data.error || '取消失败';

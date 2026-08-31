@@ -11,7 +11,9 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   if (!(await allowRate(env, `cancel:${ip}`, 10, 60))) return apiErr('请求过于频繁，请稍后再试', 429);
   const body = await request.json().catch(() => ({}));
   const orderId = String(body.order_id || '').trim();
+  const viewToken = String(body.view_token || '').trim();
   if (!orderId) return apiErr('缺少订单号');
-  const result = await cancelOrder(env, orderId);
+  if (!viewToken) return apiErr('缺少订单凭证', 403);
+  const result = await cancelOrder(env, orderId, viewToken);
   return result.ok ? apiOk({ status: 'closed' }) : apiErr(result.error || '取消失败', 409);
 };

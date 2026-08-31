@@ -92,7 +92,11 @@ export async function queryOrder(env: StoreEnv, orderId: string): Promise<Order 
   return getOrder(env.DB, orderId);
 }
 
-export async function cancelOrder(env: StoreEnv, orderId: string): Promise<{ ok: boolean; error?: string }> {
+export async function cancelOrder(env: StoreEnv, orderId: string, viewToken?: string): Promise<{ ok: boolean; error?: string }> {
+  if (viewToken) {
+    const order = await getOrder(env.DB, orderId);
+    if (!order || order.view_token !== viewToken) return { ok: false, error: '无权操作此订单' };
+  }
   const result = await env.DB.prepare(
     `UPDATE orders SET status='closed', expired_at=? WHERE id=? AND status='pending'`,
   ).bind(new Date().toISOString(), orderId).run();
@@ -101,9 +105,10 @@ export async function cancelOrder(env: StoreEnv, orderId: string): Promise<{ ok:
     : { ok: false, error: '订单不存在、已支付或已关闭' };
 }
 
-export async function checkOrderPayment(env: StoreEnv, orderId: string): Promise<{ ok: boolean; status?: string; confirmations?: number; error?: string }> {
+export async function checkOrderPayment(env: StoreEnv, orderId: string, viewToken?: string): Promise<{ ok: boolean; status?: string; confirmations?: number; error?: string }> {
   const order = await getOrder(env.DB, orderId);
   if (!order) return { ok: false, error: '订单不存在' };
+  if (viewToken && order.view_token !== viewToken) return { ok: false, error: '无权操作此订单' };
   if (order.status === 'shipped' || order.status === 'closed') return { ok: true, status: order.status, confirmations: order.tx_confirm };
   if (order.status === 'paid') {
     const shipped = await fulfillOrder(env, order, order.tx_hash, order.tx_confirm);
