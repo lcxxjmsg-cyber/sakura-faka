@@ -12,7 +12,7 @@ export const GET: APIRoute = async ({ request, locals, url }: any) => {
   if (!(await requireAdmin(request, env))) return apiErr('未授权', 401);
 
   const status = url.searchParams.get('status');
-  const limit = Number(url.searchParams.get('limit') || 100);
+  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 100)));
   let rows: any;
   if (status && status !== 'all') {
     rows = await env.DB.prepare('SELECT * FROM orders WHERE status=? ORDER BY created_at DESC LIMIT ?').bind(status, limit).all();

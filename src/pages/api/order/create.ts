@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { apiOk, apiErr, getEnv } from '@/lib/api';
+import { apiOk, apiErr, getEnv, allowRate } from '@/lib/api';
 import { createOrder } from '@/lib/orders';
 
 export const prerender = false;
@@ -7,6 +7,8 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, locals }: any) => {
   const env = getEnv(locals?.runtime);
   if (!env) return apiErr('服务器配置错误', 500);
+  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'unknown';
+  if (!(await allowRate(env, `create:${ip}`, 10, 60))) return apiErr('请求过于频繁，请稍后再试', 429);
   const body = await request.json().catch(() => ({}));
   const productId = Number(body.product_id);
   const qtyRaw = body.qty;

@@ -10,6 +10,7 @@ export const GET: APIRoute = async ({ params, locals }: any) => {
   const id = Number(params.id);
   if (!id) return apiErr('参数错误');
   const product = await getProduct(env.DB, id);
+  if (product && product.status !== 1) return apiErr('商品不存在或已下架', 404);
   if (!product) return apiErr('商品不存在', 404);
   return apiOk(product);
 };
