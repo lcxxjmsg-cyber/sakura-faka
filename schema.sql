@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS orders (
   card_ids    TEXT DEFAULT '',              -- 关联卡密id列表(逗号分隔)
   created_at  TEXT DEFAULT (datetime('now')),
   paid_at     TEXT NULL,
-  expired_at  TEXT NULL
+  expired_at  TEXT NULL,
+  email_sent_at TEXT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_orders_address ON orders(address);

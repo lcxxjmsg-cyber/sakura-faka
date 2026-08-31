@@ -40,6 +40,7 @@ export type Order = {
   created_at: string;
   paid_at: string | null;
   expired_at: string | null;
+  email_sent_at?: string | null;
 };
 
 export type StoreEnv = {
@@ -54,4 +55,6 @@ export type StoreEnv = {
   POLL_INTERVAL: string;
   TRON_RPC_URL: string;
   CRON_SECRET: string;
+  RESEND_API_KEY?: string;
+  MAIL_FROM?: string;
 };

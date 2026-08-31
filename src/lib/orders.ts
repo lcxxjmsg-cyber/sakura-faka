@@ -2,6 +2,7 @@ import type { StoreEnv, Order } from '@/types';
 import { getProduct, getOrder, randId } from '@/lib/db';
 import { deriveTronAddress } from '@/lib/tron';
 import { checkUsdtPayment } from '@/lib/tron';
+import { sendDeliveryEmail } from '@/lib/mail';
 const ORDER_TTL_SECONDS = 30 * 60; // 30分钟未支付关闭
 
 // ============================================================
@@ -249,6 +250,11 @@ export async function fulfillOrder(
     // 订单写入失败时回滚本次已占用资源，避免出现“库存减少但订单未发货”。
     await db.prepare(`UPDATE cards SET status=0, order_id=NULL, sold_at=NULL WHERE order_id=? AND status=1`).bind(order.id).run();
     shippedOk = false;
+  }
+  if (shippedOk && order.contact_email && !order.email_sent_at) {
+    const { results } = await db.prepare(`SELECT card FROM cards WHERE id IN (${placeholders})`).bind(...cardIds).all<{ card: string }>();
+    const sent = await sendDeliveryEmail(env, order, (results || []).map((row) => row.card));
+    if (sent) await db.prepare(`UPDATE orders SET email_sent_at=? WHERE id=? AND email_sent_at IS NULL`).bind(new Date().toISOString(), order.id).run();
   }
   return shippedOk;
 }
