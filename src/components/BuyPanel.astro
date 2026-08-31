@@ -32,7 +32,7 @@ const fmtPrice = formatUsdt(price);
   <label class="mt-4 block text-sm text-slate-500">邮箱（可选，接收卡密通知）</label>
   <input id="email" type="email" class="input mt-2" placeholder="you@example.com" />
 
-  <button id="buy" class="btn-sakura w-full mt-6 text-lg" {stock > 0 ? '' : 'disabled'}>
+  <button id="buy" class="btn-sakura w-full mt-6 text-lg" disabled={stock <= 0}>
     {stock > 0 ? '立即购买' : '已售罄'}
   </button>
   <p id="tip" class="mt-3 text-center text-sm text-slate-500"></p>
