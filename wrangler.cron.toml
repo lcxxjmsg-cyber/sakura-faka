@@ -1,0 +1,21 @@
+# Standalone Worker for scheduled order payment checks.
+name = "faka-order-cron"
+main = "src/cron-worker.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "faka-db"
+database_id = "750ddc20-8086-464f-bf71-d52e06ff2d86"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "40c2abbaa1984d57a9a3dc89d91cc3d9"
+
+[vars]
+TRON_CONFIRMATIONS = "19"
+TRON_RPC_URL = "https://api.trongrid.io"
+
+[triggers]
+crons = ["* * * * *"]
