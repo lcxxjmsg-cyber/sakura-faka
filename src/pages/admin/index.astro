@@ -12,6 +12,9 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
   <div class="flex gap-2 mb-6 border-b border-slate-200">
     <button class="tab-btn active" data-tab="products">📦 商品管理</button>
     <button class="tab-btn" data-tab="orders">🧾 订单管理</button>
+    <button class="tab-btn" data-tab="stats">📊 经营概览</button>
+    <button class="tab-btn" data-tab="payments">💳 支付对账</button>
+    <button class="tab-btn" data-tab="sweeps">🔄 资金归集</button>
   </div>
 
   <!-- 商品管理 -->
@@ -33,6 +36,23 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
       <button class="status-btn" data-status="closed">已关闭</button>
     </div>
     <div id="order-list" class="space-y-3">加载中…</div>
+  </section>
+
+  <section id="tab-stats" class="tab-panel hidden">
+    <h2 class="font-semibold text-slate-700 mb-4">经营概览</h2>
+    <div id="stats-panel" class="grid sm:grid-cols-3 gap-4">加载中…</div>
+    <p class="mt-4 text-sm text-slate-500">邮件通知需要配置 RESEND_API_KEY 和 MAIL_FROM；未配置时订单仍会正常发货。</p>
+  </section>
+
+  <section id="tab-payments" class="tab-panel hidden">
+    <div class="flex items-center justify-between mb-4"><h2 class="font-semibold text-slate-700">支付流水</h2><button onclick="loadPayments()" class="btn-ghost !py-1.5 !px-3 text-xs">刷新</button></div>
+    <div id="payment-list" class="space-y-3">加载中…</div>
+  </section>
+
+  <section id="tab-sweeps" class="tab-panel hidden">
+    <div class="flex items-center justify-between mb-4"><h2 class="font-semibold text-slate-700">资金归集任务</h2><button onclick="loadSweeps()" class="btn-ghost !py-1.5 !px-3 text-xs">刷新</button></div>
+    <p class="text-sm text-amber-600 mb-4">当前仅记录任务和交易哈希，实际转账需要独立签名服务。</p>
+    <div id="sweep-list" class="space-y-3">加载中…</div>
   </section>
 </Layout>
 
@@ -156,6 +176,45 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
   async function load(tab: string) {
     if (tab === 'products') return loadProducts();
     if (tab === 'orders') return loadOrders();
+    if (tab === 'stats') return loadStats();
+    if (tab === 'payments') return loadPayments();
+    if (tab === 'sweeps') return loadSweeps();
+  }
+
+  async function loadStats() {
+    const el = document.querySelector('#stats-panel') as HTMLElement;
+    try {
+      const data = await request('/api/admin/stats');
+      const p = data.data.products || {};
+      const orders = data.data.orders || [];
+      const shipped = orders.find((x: any) => x.status === 'shipped') || { count: 0, amount: 0 };
+      el.innerHTML = `<div class="card p-5"><div class="text-sm text-slate-500">商品数</div><div class="text-2xl font-bold text-slate-800 mt-2">${p.count || 0}</div></div><div class="card p-5"><div class="text-sm text-slate-500">可售库存</div><div class="text-2xl font-bold text-slate-800 mt-2">${p.stock || 0}</div></div><div class="card p-5"><div class="text-sm text-slate-500">已发货收入</div><div class="text-2xl font-bold text-rose-500 mt-2">${(Number(shipped.amount || 0) / 1e6).toFixed(2)} USDT</div></div>`;
+    } catch { el.textContent = '加载失败'; }
+  }
+
+  async function loadPayments() {
+    const el = document.querySelector('#payment-list') as HTMLElement;
+    try {
+      const data = await request('/api/admin/payments?limit=200');
+      const list = data.data || [];
+      el.innerHTML = list.length ? list.map((p: any) => `<div class="card p-4 flex flex-wrap gap-3 items-center"><span class="badge ${p.status === 'confirmed' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">${esc(p.status)}</span><span class="font-semibold">${(Number(p.amount || 0) / 1e6).toFixed(2)} USDT</span><span class="text-sm text-slate-500">${esc(p.product_title || '')}</span><code class="text-xs text-slate-400 break-all">${esc(p.tx_hash)}</code><span class="text-xs text-slate-400">确认 ${p.confirmations}</span></div>`).join('') : '<div class="text-center text-slate-400 py-12">暂无支付流水</div>';
+    } catch { el.textContent = '加载失败'; }
+  }
+
+  async function loadSweeps() {
+    const el = document.querySelector('#sweep-list') as HTMLElement;
+    try {
+      const data = await request('/api/admin/sweeps');
+      const list = data.data || [];
+      el.innerHTML = list.length ? list.map((s: any) => `<div class="card p-4 flex flex-wrap gap-3 items-center"><code class="text-xs">#${s.id}</code><span class="badge bg-amber-50 text-amber-600">${esc(s.status)}</span><span class="text-sm">${esc(s.source_address)}</span><span class="text-sm text-slate-500">${esc(s.note || '')}</span><button onclick="completeSweep(${s.id})" class="btn-ghost !py-1.5 !px-3 text-xs ml-auto">记录已完成</button></div>`).join('') : '<div class="text-center text-slate-400 py-12">暂无归集任务</div>';
+    } catch { el.textContent = '加载失败'; }
+  }
+
+  async function completeSweep(id: number) {
+    const tx = prompt('请输入归集交易哈希（可留空）');
+    if (tx === null) return;
+    try { await request('/api/admin/sweeps', { method: 'POST', body: JSON.stringify({ id, status: 'completed', tx_hash: tx }) }); loadSweeps(); }
+    catch (e: any) { alert(e.message); }
   }
 
   async function loadProducts() {
@@ -348,6 +407,9 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
   (window as any).importCards = importCards;
   (window as any).reship = reship;
   (window as any).copyTx = copyTx;
+  (window as any).loadPayments = loadPayments;
+  (window as any).loadSweeps = loadSweeps;
+  (window as any).completeSweep = completeSweep;
 
   // 初始加载
   loadProducts();
