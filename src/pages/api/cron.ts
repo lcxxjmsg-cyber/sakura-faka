@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv } from '@/lib/api';
 import { processPendingOrders } from '@/lib/orders';
+import { processPendingSweeps } from '@/lib/tron-sweep';
 
 // Cron 触发入口：轮询所有 pending 订单，确认到账后自动发货
 // 部署后在 Cloudflare Dashboard 配置 Cron Trigger 定时调用本端点
@@ -19,5 +20,6 @@ export const GET: APIRoute = async ({ request, locals }: any) => {
   if (!authorized) return apiErr('未授权', 401);
 
   const processed = await processPendingOrders(env);
-  return apiOk({ processed, at: new Date().toISOString() });
+  const sweeps = await processPendingSweeps(env);
+  return apiOk({ processed, sweeps, at: new Date().toISOString() });
 };

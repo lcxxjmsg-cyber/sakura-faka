@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { apiOk, apiErr, getEnv } from '@/lib/api';
+import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
 
 export const prerender = false;
@@ -40,5 +40,6 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   await env.DB.prepare('UPDATE products SET stock=(SELECT COUNT(*) FROM cards WHERE product_id=? AND status=0), updated_at=? WHERE id=?')
     .bind(productId, new Date().toISOString(), productId).run();
 
+  await logAdminAction(env, `导入卡密 ${productId} 条=${imported} 跳过=${keys.length - imported}`);
   return apiOk({ count: imported, skipped: keys.length - imported });
 };

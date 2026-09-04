@@ -7,6 +7,15 @@ export function getEnv(runtime: any): StoreEnv | null {
   return runtime?.env ?? null;
 }
 
+// 记录后台操作日志（写入 admin_logs 表，尽力而为）
+export async function logAdminAction(env: StoreEnv, action: string): Promise<void> {
+  try {
+    await env.DB.prepare('INSERT INTO admin_logs (action) VALUES (?)').bind(String(action).slice(0, 500)).run();
+  } catch {
+    // 日志失败不影响主流程
+  }
+}
+
 export function apiOk(data: any) {
   return new Response(JSON.stringify({ ok: true, data }), {
     status: 200,

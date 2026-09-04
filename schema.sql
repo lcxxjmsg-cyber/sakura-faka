@@ -90,3 +90,49 @@ CREATE TABLE IF NOT EXISTS admin_logs (
   action     TEXT NOT NULL,                 -- 操作内容
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- 退款申请/记录
+CREATE TABLE IF NOT EXISTS refunds (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id       TEXT NOT NULL,
+  amount         TEXT NOT NULL,             -- 退款金额(最小单位整数)
+  refund_address TEXT NOT NULL,             -- 退款地址
+  tx_hash        TEXT DEFAULT '',
+  status         TEXT NOT NULL DEFAULT 'requested',
+  note           TEXT DEFAULT '',
+  created_at     TEXT DEFAULT (datetime('now')),
+  updated_at     TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+CREATE INDEX IF NOT EXISTS idx_refunds_order ON refunds(order_id);
+
+-- 资金归集任务：订单发货后自动创建，等待(自动/手动)归集到主钱包
+CREATE TABLE IF NOT EXISTS sweep_tasks (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id       TEXT,
+  source_address TEXT NOT NULL,             -- 作为收款子地址
+  to_address     TEXT DEFAULT '',           -- 归集目标(主钱包)
+  amount         TEXT DEFAULT '0',          -- 待归集金额(最小单位整数)
+  asset          TEXT NOT NULL DEFAULT 'USDT',
+  address_index  INTEGER DEFAULT -1,        -- HD 派生索引(用于本地签名)
+  product_title  TEXT DEFAULT '',
+  status         TEXT NOT NULL DEFAULT 'pending', -- pending/submitted/completed/failed
+  tx_hash        TEXT DEFAULT '',
+  note           TEXT DEFAULT '',
+  created_at     TEXT DEFAULT (datetime('now')),
+  updated_at     TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sweep_status ON sweep_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_sweep_address ON sweep_tasks(source_address);
+
+-- 系统内置收款钱包元信息（单行表, id 恒为 1）
+-- mnemonic: BIP39 助记词（系统生成并保存；也可不保存，由用户离线备份）
+-- master_address: 归集目标主钱包（派生自助记词；也可由环境变量 TRON_MASTER_ADDRESS 覆盖）
+CREATE TABLE IF NOT EXISTS wallet_meta (
+  id                   INTEGER PRIMARY KEY CHECK (id = 1),
+  mnemonic             TEXT DEFAULT '',
+  master_address       TEXT DEFAULT '',
+  source               TEXT DEFAULT '',   -- 'system' | '' (custom/env)
+  mnemonic_generated_at TEXT NULL,
+  updated_at           TEXT DEFAULT (datetime('now'))
+);

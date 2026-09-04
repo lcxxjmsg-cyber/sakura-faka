@@ -23,3 +23,14 @@ TRON_CONFIRMATIONS = "19"
 POLL_INTERVAL = "60"
 # ===== TRON 链上 RPC =====
 TRON_RPC_URL = "https://api.trongrid.io"
+# ===== 自动归集 (USDT TRC-20) =====
+# 是否启用自动归集到主钱包。**默认关闭**，建议先用后台"干跑校验"验证无误后再开启。
+AUTO_SWEEP_ENABLED = "false"
+# 单笔归集能量费上限 (单位: sun/TRX 最小单位)
+SWEEP_FEE_LIMIT = "100000000"
+# 最小归集金额 (单位: USDT 最小单位, 1 USDT = 1000000)。小于该值不归集。
+SWEEP_MIN_AMOUNT = "10000"
+# ===== 邮件通知 (Resend) =====
+# 两个变量请通过 Dashboard 的 Secrets 设置，保持此处为空即可。
+# RESEND_API_KEY = ""
+# MAIL_FROM = ""

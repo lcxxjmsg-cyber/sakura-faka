@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { apiOk, apiErr, getEnv } from '@/lib/api';
+import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
 
 export const prerender = false;
@@ -17,5 +17,6 @@ export const DELETE: APIRoute = async ({ request, locals, url }: any) => {
     env.DB.prepare('DELETE FROM cards WHERE product_id=?').bind(id),
     env.DB.prepare('DELETE FROM products WHERE id=?').bind(id),
   ]);
+  await logAdminAction(env, `删除商品及其卡密 #${id}`);
   return apiOk({ ok: true });
 };

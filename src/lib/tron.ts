@@ -17,10 +17,10 @@ import { secp256k1 } from '@noble/curves/secp256k1.js';
 //   - 公钥 -> keccak256 -> 取后20字节 -> 加 0x41 前缀 -> base58check -> 地址 (T开头)
 //
 // TRC-20 USDT 官方合约地址（主网）：
-//   TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj
+//   TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
 // ============================================================
 
-export const USDT_TRC20_CONTRACT = 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj';
+export const USDT_TRC20_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 export const TRON_DECIMALS = 6;
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -47,6 +47,48 @@ function base58Encode(data: Uint8Array): string {
   }
   for (let i = digits.length - 1; i >= 0; i--) result += BASE58_ALPHABET[digits[i]];
   return result;
+}
+
+export function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.replace(/^0x/, '').trim();
+  if (clean.length % 2 !== 0) throw new Error('无效 hex');
+  return Uint8Array.from(clean.match(/.{2}/g)?.map((h) => parseInt(h, 16)) ?? []);
+}
+
+export function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// base58 解码 (用于把 T 开头的 TRON 地址转回原始字节)
+export function base58Decode(str: string): Uint8Array {
+  const ALPHABET = BASE58_ALPHABET;
+  const map: Record<string, number> = {};
+  for (let i = 0; i < ALPHABET.length; i++) map[ALPHABET[i]] = i;
+  let num = 0n;
+  for (const ch of str.trim()) {
+    const idx = map[ch];
+    if (idx === undefined) throw new Error('非法 base58 字符');
+    num = num * 58n + BigInt(idx);
+  }
+  let hex = num.toString(16);
+  if (hex.length % 2 !== 0) hex = '0' + hex;
+  const body = hexToBytes(hex);
+  // 补回前导零(对应 base58 里的 '1')
+  let lead = 0;
+  for (const ch of str.trim()) { if (ch === '1') lead++; else break; }
+  const out = new Uint8Array(lead + body.length);
+  out.set(body, lead);
+  return out;
+}
+
+// TRON 地址 -> '41' + 后20字节 hex (用于 owner_address / contract_address)
+export function tronToHex21(address: string): string {
+  return bytesToHex(base58Decode(address).slice(0, 21));
+}
+
+// TRON 地址 -> 20 字节 hex (不带 0x41 前缀, 用于合约参数中的 to)
+export function tronToEVM20(address: string): string {
+  return bytesToHex(base58Decode(address).slice(1, 21));
 }
 
 // 计算 keccak256 (用于地址派生)
@@ -76,7 +118,7 @@ export function evmToTron(evmAddr: string): string {
 
 // ============ HD 派生 (BIP32 / SLIP-0010 ed25519) ============
 // 从助记词派生第 index 个 TRON 地址（BIP44, coin type 195）
-export function deriveTronAddress(mnemonic: string, index: number): string | null {
+export function deriveTronAddressInfo(mnemonic: string, index: number): { address: string; evm20: string } | null {
   try {
     if (!mnemonic || mnemonic.trim().split(/\s+/).length < 12) return null;
     const seed = mnemonicToSeedSync(mnemonic);
@@ -86,8 +128,30 @@ export function deriveTronAddress(mnemonic: string, index: number): string | nul
     // secp256k1 未压缩公钥（65字节，含 04 前缀）→ keccak256 → 取后20字节 → EVM 地址
     const uncompressed = secp256k1.getPublicKey(child.privateKey, false);
     const hash = keccak_256(uncompressed.subarray(1));
-    const evmAddr = '0x' + Array.from(hash.subarray(12), (b) => b.toString(16).padStart(2, '0')).join('');
-    return evmToTron(evmAddr);
+    const evm20 = Array.from(hash.subarray(12), (b) => b.toString(16).padStart(2, '0')).join('');
+    return { address: evmToTron('0x' + evm20), evm20 };
+  } catch (e) {
+    return null;
+  }
+}
+
+export function deriveTronAddress(mnemonic: string, index: number): string | null {
+  return deriveTronAddressInfo(mnemonic, index)?.address ?? null;
+}
+
+// 派生"主钱包/归集目标"地址：使用账户级路径 m/44'/195'/0'，
+// 与订单子地址路径 m/44'/195'/0'/0/{index}' 完全隔离，因此永不相交。
+export function deriveMasterAddress(mnemonic: string): string | null {
+  try {
+    if (!mnemonic || mnemonic.trim().split(/\s+/).length < 12) return null;
+    const seed = mnemonicToSeedSync(mnemonic);
+    const hd = HDKey.fromMasterSeed(seed);
+    const child = hd.derive(`m/44'/195'/0'`);
+    if (!child.privateKey) return null;
+    const uncompressed = secp256k1.getPublicKey(child.privateKey, false);
+    const hash = keccak_256(uncompressed.subarray(1));
+    const evm20 = Array.from(hash.subarray(12), (b) => b.toString(16).padStart(2, '0')).join('');
+    return evmToTron('0x' + evm20);
   } catch (e) {
     return null;
   }

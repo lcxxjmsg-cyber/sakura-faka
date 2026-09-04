@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { apiOk, apiErr, getEnv } from '@/lib/api';
+import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
 import { parseUsdt } from '@/lib/db';
 
@@ -36,5 +36,6 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   fields.push('updated_at=datetime(\'now\')');
 
   await env.DB.prepare(`UPDATE products SET ${fields.join(', ')} WHERE id=?`).bind(...values, id).run();
+  await logAdminAction(env, `修改商品 #${id} (${fields.filter((f) => !f.includes('updated_at')).join('; ')})`);
   return apiOk({ ok: true });
 };

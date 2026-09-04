@@ -3,6 +3,7 @@ import { getProduct, getOrder, randId } from '@/lib/db';
 import { deriveTronAddress } from '@/lib/tron';
 import { checkUsdtPayment } from '@/lib/tron';
 import { sendDeliveryEmail } from '@/lib/mail';
+import { getWalletMnemonic, getMasterAddress } from '@/lib/wallet';
 const ORDER_TTL_SECONDS = 30 * 60; // 30分钟未支付关闭
 
 // ============================================================
@@ -21,6 +22,9 @@ export async function createOrder(
   // 强制整数数量，避免 BigInt(5.5) 崩溃
   if (!Number.isInteger(qty) || qty < 1 || qty > 10) return { ok: false, error: '数量需为1-10的整数' };
 
+  const mnemonic = await getWalletMnemonic(env);
+  if (!mnemonic) return { ok: false, error: '收款钱包未初始化，请联系站长或前往后台「钱包设置」一键生成' };
+
   const cardCount = await db
     .prepare('SELECT COUNT(*) AS c FROM cards WHERE product_id=? AND status=0')
     .bind(productId)
@@ -37,7 +41,7 @@ export async function createOrder(
   let index = (maxUsed?.m ?? -1) + 1;
   const MAX_INDEX = 1000000;
   for (let i = index; i < MAX_INDEX; i++) {
-    const candidate = deriveTronAddress(env.TRON_MNEMONIC, i);
+    const candidate = deriveTronAddress(mnemonic, i);
     if (!candidate) return { ok: false, error: '钱包派生失败' };
     // 检查该地址是否已存在于订单表（兜底防冲突）
     const exists = await db
@@ -258,8 +262,18 @@ export async function fulfillOrder(
     if (sent) await db.prepare(`UPDATE orders SET email_sent_at=? WHERE id=? AND email_sent_at IS NULL`).bind(new Date().toISOString(), order.id).run();
   }
   if (shippedOk) {
-    await db.prepare(`INSERT INTO sweep_tasks (order_id, source_address, status, note) SELECT ?, ?, 'pending', '等待安全签名服务归集' WHERE NOT EXISTS (SELECT 1 FROM sweep_tasks WHERE order_id=? AND source_address=?)`)
-      .bind(order.id, order.address, order.id, order.address).run();
+    try {
+      const masterAddr = await getMasterAddress(env);
+      await db.prepare(
+        `INSERT INTO sweep_tasks (order_id, source_address, to_address, amount, asset, address_index, product_title, status, note)
+         SELECT ?, ?, ?, ?, 'USDT', ?, ?, 'pending', '等待自动归集'
+         WHERE NOT EXISTS (SELECT 1 FROM sweep_tasks WHERE order_id=? AND source_address=?)`,
+      )
+        .bind(order.id, order.address, masterAddr, order.total_price, order.address_index ?? -1, order.product_title, order.id, order.address)
+        .run();
+    } catch {
+      // 归集任务为尽力而为，失败不阻塞发货（例如老库尚未执行 v7 迁移）。
+    }
   }
   return shippedOk;
 }

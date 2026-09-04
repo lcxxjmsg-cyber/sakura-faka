@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { apiOk, apiErr, getEnv } from '@/lib/api';
+import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
 import { parseUsdt } from '@/lib/db';
 
@@ -43,5 +43,6 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   )
     .bind(title, description, cover, price, category, deliveryType, sort, status)
     .run();
+  await logAdminAction(env, `新增商品 ${title} #${res.meta.last_row_id}`);
   return apiOk({ id: res.meta.last_row_id });
 };

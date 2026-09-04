@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { apiOk, apiErr, getEnv } from '@/lib/api';
+import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
 import { manualFulfill, checkOrderPayment } from '@/lib/orders';
 
@@ -33,5 +33,6 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   const current = await env.DB.prepare('SELECT status FROM orders WHERE id=?').bind(orderId).first<{ status: string }>();
   const res = current?.status === 'pending' ? await checkOrderPayment(env, orderId) : await manualFulfill(env, orderId);
   if (!res.ok) return apiErr(res.error || '补发失败');
+  await logAdminAction(env, `补发订单 ${orderId}`);
   return apiOk({ ok: true });
 };

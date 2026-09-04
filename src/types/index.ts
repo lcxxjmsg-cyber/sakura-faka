@@ -56,6 +56,9 @@ export type StoreEnv = {
   POLL_INTERVAL: string;
   TRON_RPC_URL: string;
   CRON_SECRET: string;
+  AUTO_SWEEP_ENABLED?: string;
+  SWEEP_FEE_LIMIT?: string;
+  SWEEP_MIN_AMOUNT?: string;
   RESEND_API_KEY?: string;
   MAIL_FROM?: string;
 };

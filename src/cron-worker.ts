@@ -1,9 +1,10 @@
 import { processPendingOrders, retryPendingEmails } from './lib/orders';
+import { processPendingSweeps } from './lib/tron-sweep';
 import type { StoreEnv } from './types';
 
 export default {
   async scheduled(_controller: ScheduledController, env: StoreEnv, ctx: ExecutionContext) {
-    ctx.waitUntil(Promise.all([processPendingOrders(env), retryPendingEmails(env)]));
+    ctx.waitUntil(Promise.all([processPendingOrders(env), retryPendingEmails(env), processPendingSweeps(env)]));
   },
 
   async fetch(request: Request, env: StoreEnv) {
@@ -12,6 +13,7 @@ export default {
       return new Response('Unauthorized', { status: 401 });
     }
     const processed = await processPendingOrders(env);
-    return Response.json({ ok: true, processed, at: new Date().toISOString() });
+    const sweeps = await processPendingSweeps(env);
+    return Response.json({ ok: true, processed, sweeps, at: new Date().toISOString() });
   },
 };

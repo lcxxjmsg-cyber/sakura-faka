@@ -41,3 +41,25 @@ export async function setPasswordGrant(env: StoreEnv, sid: string): Promise<void
 export function makeSid(): string {
   return crypto.randomUUID();
 }
+
+// ============================================================
+// 登录失败限速/锁定：防止暴力破解。基于 KV 计数。
+// ============================================================
+const FAIL_PREFIX = 'login:fail:';
+
+export async function canAttemptLogin(env: StoreEnv, ip: string): Promise<boolean> {
+  const key = FAIL_PREFIX + ip;
+  const fails = Number(await env.KV.get(key) || '0');
+  // 10 分钟内失败超过 8 次则锁定
+  return fails < 8;
+}
+
+export async function recordLoginFail(env: StoreEnv, ip: string): Promise<void> {
+  const key = FAIL_PREFIX + ip;
+  const fails = Number(await env.KV.get(key) || '0') + 1;
+  await env.KV.put(key, String(fails), { expirationTtl: 600 });
+}
+
+export async function clearLoginFails(env: StoreEnv, ip: string): Promise<void> {
+  await env.KV.delete(FAIL_PREFIX + ip);
+}

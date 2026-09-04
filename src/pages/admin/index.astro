@@ -2,6 +2,7 @@
 import Layout from '@/layouts/Layout.astro';
 import { getSiteConfig } from '@/lib/site';
 const site = await getSiteConfig((Astro as any).locals?.runtime);
+const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED === 'true';
 ---
 <Layout title="后台管理">
   <div class="flex items-center justify-between mb-6">
@@ -10,12 +11,42 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
   </div>
 
   <div class="flex gap-2 mb-6 border-b border-slate-200">
+    <button class="tab-btn" data-tab="wallet">🏦 收款钱包</button>
     <button class="tab-btn active" data-tab="products">📦 商品管理</button>
     <button class="tab-btn" data-tab="orders">🧾 订单管理</button>
     <button class="tab-btn" data-tab="stats">📊 经营概览</button>
     <button class="tab-btn" data-tab="payments">💳 支付对账</button>
+    <button class="tab-btn" data-tab="refunds">↩️ 退款</button>
     <button class="tab-btn" data-tab="sweeps">🔄 资金归集</button>
+    <button class="tab-btn" data-tab="logs">📜 操作日志</button>
+    <button class="tab-btn" data-tab="system">🩺 系统自检</button>
   </div>
+
+  <!-- 收款钱包 -->
+  <section id="tab-wallet" class="tab-panel hidden">
+    <h2 class="font-semibold text-slate-700 mb-4">收款钱包</h2>
+    <div id="wallet-guide" class="card p-5 mb-4 text-sm text-slate-600 leading-relaxed">
+      <p class="text-slate-800 font-semibold mb-2">🛡️ 什么是收款钱包？</p>
+      <p>系统会为每个订单生成一张唯一收款地址（<b>T</b> 开头），买家通过 <b>USDT (TRC-20)</b> 转账到该地址，到账后系统自动发货并把钱归集到<b>主钱包</b>。</p>
+      <ol class="list-decimal ml-5 mt-2 space-y-1">
+        <li>第一步：点击下方「一键生成收款钱包」——系统会生成专属于您的钱包。</li>
+        <li>第二步：<b>务必离线备份助记词</b>（只有它能找回您的钱包，泄露=丢钱）。</li>
+        <li>第三步：为<b>收款子地址预存少量 TRX</b> 作为能量费，否则到账的钱无法转出。</li>
+      </ol>
+      <p class="mt-2 text-amber-600">⚠️ 系统里的钱包与买家、以及您的其他账户完全隔离，为一套独立账户。</p>
+    </div>
+
+    <div id="wallet-panel" class="space-y-3">加载中…</div>
+
+    <div id="wallet-mnemonic-box" class="hidden mt-4 card p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-semibold text-slate-700">🔑 助记词（请立即离线备份，仅此可见）</span>
+        <button onclick="copyMnemonic()" class="btn-ghost !py-1.5 !px-3 text-xs">复制</button>
+      </div>
+      <textarea id="wallet-mnemonic" rows="3" readonly class="input font-mono !text-xs"></textarea>
+      <p class="text-xs text-amber-600 mt-2">请抄写/保存到安全离线位置。助记词可找回并转走全部资金，请勿透露给任何人、不要截图发聊天。</p>
+    </div>
+  </section>
 
   <!-- 商品管理 -->
   <section id="tab-products" class="tab-panel">
@@ -51,8 +82,31 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
 
   <section id="tab-sweeps" class="tab-panel hidden">
     <div class="flex items-center justify-between mb-4"><h2 class="font-semibold text-slate-700">资金归集任务</h2><button onclick="loadSweeps()" class="btn-ghost !py-1.5 !px-3 text-xs">刷新</button></div>
-    <p class="text-sm text-amber-600 mb-4">当前仅记录任务和交易哈希，实际转账需要独立签名服务。</p>
+    <div id="sweep-mode" data-auto-sweep={autoSweepEnabled ? '1' : '0'} class="hidden"></div>
+    <p id="sweep-hint" class="text-sm text-slate-500 mb-4"></p>
     <div id="sweep-list" class="space-y-3">加载中…</div>
+  </section>
+
+  <!-- 退款 -->
+  <section id="tab-refunds" class="tab-panel hidden">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold text-slate-700">退款管理</h2>
+      <button onclick="openRefund()" class="btn-sakura !py-2 !px-4 text-sm">＋ 新建退款</button>
+    </div>
+    <div id="refund-list" class="space-y-3">加载中…</div>
+  </section>
+
+  <!-- 操作日志 -->
+  <section id="tab-logs" class="tab-panel hidden">
+    <div class="flex items-center justify-between mb-4"><h2 class="font-semibold text-slate-700">操作日志</h2><button onclick="loadLogs()" class="btn-ghost !py-1.5 !px-3 text-xs">刷新</button></div>
+    <div id="log-list" class="space-y-2">加载中…</div>
+  </section>
+
+  <!-- 系统自检 -->
+  <section id="tab-system" class="tab-panel hidden">
+    <div class="flex items-center justify-between mb-4"><h2 class="font-semibold text-slate-700">系统自检</h2><button onclick="runSystemCheck()" class="btn-sakura !py-2 !px-4 text-sm">开始自检</button></div>
+    <p class="text-sm text-slate-500 mb-4">只读检查，不广播任何交易，无资金风险。</p>
+    <div id="system-result" class="space-y-2">点击"开始自检"运行。</div>
   </section>
 </Layout>
 
@@ -120,6 +174,38 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
   </div>
 </div>
 
+<!-- 退款新建弹窗 -->
+<div id="refund-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeRefund()"></div>
+  <div class="relative card w-full max-w-md p-6">
+    <h3 class="text-lg font-bold mb-4 text-slate-800">新建退款</h3>
+    <div class="space-y-3">
+      <div><label class="text-sm text-slate-500">订单号</label><input id="r-order" class="input mt-1" placeholder="如：a8ekd2xqfn9z1p" /></div>
+      <div><label class="text-sm text-slate-500">退款金额 (USDT)</label><input id="r-amount" type="number" step="0.01" class="input mt-1" placeholder="如 9.99" /></div>
+      <div><label class="text-sm text-slate-500">退款地址</label><input id="r-address" class="input mt-1" placeholder="T 开头的 TRON 地址" /></div>
+      <div><label class="text-sm text-slate-500">备注</label><input id="r-note" class="input mt-1" placeholder="可选说明" /></div>
+    </div>
+    <div class="mt-6 flex gap-3">
+      <button onclick="submitRefund()" class="btn-sakura flex-1">提交</button>
+      <button onclick="closeRefund()" class="btn-ghost">取消</button>
+    </div>
+    <p id="refund-msg" class="mt-2 text-sm text-emerald-600"></p>
+  </div>
+</div>
+
+<!-- 订单卡密查看弹窗 -->
+<div id="cards-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeCards()"></div>
+  <div class="relative card w-full max-w-lg p-6">
+    <h3 id="cards-modal-title" class="text-lg font-bold mb-2 text-slate-800">订单卡密</h3>
+    <p id="cards-modal-sub" class="text-sm text-slate-500 mb-3"></p>
+    <div id="cards-content" class="space-y-2 max-h-[60vh] overflow-auto"></div>
+    <div class="mt-6 flex gap-3">
+      <button onclick="closeCards()" class="btn-ghost flex-1">关闭</button>
+    </div>
+  </div>
+</div>
+
 <style is:global>
   .tab-btn { @apply px-4 py-2.5 text-sm font-medium text-slate-500 hover:text-rose-500 transition border-b-2 border-transparent; }
   .tab-btn.active { @apply text-rose-500 border-rose-400; }
@@ -174,11 +260,15 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
 
   // ============ 加载数据 ============
   async function load(tab: string) {
+    if (tab === 'wallet') return loadWallet();
     if (tab === 'products') return loadProducts();
     if (tab === 'orders') return loadOrders();
     if (tab === 'stats') return loadStats();
     if (tab === 'payments') return loadPayments();
+    if (tab === 'refunds') return loadRefunds();
     if (tab === 'sweeps') return loadSweeps();
+    if (tab === 'logs') return loadLogs();
+    if (tab === 'system') return runSystemCheck();
   }
 
   async function loadStats() {
@@ -188,7 +278,8 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
       const p = data.data.products || {};
       const orders = data.data.orders || [];
       const shipped = orders.find((x: any) => x.status === 'shipped') || { count: 0, amount: 0 };
-      el.innerHTML = `<div class="card p-5"><div class="text-sm text-slate-500">商品数</div><div class="text-2xl font-bold text-slate-800 mt-2">${p.count || 0}</div></div><div class="card p-5"><div class="text-sm text-slate-500">可售库存</div><div class="text-2xl font-bold text-slate-800 mt-2">${p.stock || 0}</div></div><div class="card p-5"><div class="text-sm text-slate-500">已发货收入</div><div class="text-2xl font-bold text-rose-500 mt-2">${(Number(shipped.amount || 0) / 1e6).toFixed(2)} USDT</div></div>`;
+      const sweeps = data.data.sweeps || {};
+      el.innerHTML = `<div class="card p-5"><div class="text-sm text-slate-500">商品数</div><div class="text-2xl font-bold text-slate-800 mt-2">${p.count || 0}</div></div><div class="card p-5"><div class="text-sm text-slate-500">可售库存</div><div class="text-2xl font-bold text-slate-800 mt-2">${p.stock || 0}</div></div><div class="card p-5"><div class="text-sm text-slate-500">已发货收入</div><div class="text-2xl font-bold text-rose-500 mt-2">${(Number(shipped.amount || 0) / 1e6).toFixed(2)} USDT</div></div><div class="card p-5"><div class="text-sm text-slate-500">待归集</div><div class="text-2xl font-bold text-amber-500 mt-2">${(Number(sweeps.amount || 0) / 1e6).toFixed(2)} USDT <span class="text-xs font-normal text-slate-400">${sweeps.count || 0} 单</span></div></div>`;
     } catch { el.textContent = '加载失败'; }
   }
 
@@ -203,11 +294,52 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
 
   async function loadSweeps() {
     const el = document.querySelector('#sweep-list') as HTMLElement;
+    const hint = document.querySelector('#sweep-hint') as HTMLElement;
+    const autoOn = document.querySelector('#sweep-mode')?.getAttribute('data-auto-sweep') === '1';
+    hint.textContent = autoOn
+      ? '自动归集已开启：子地址收款后将自动转账到主钱包。源地址需预存少量 TRX 供能量费。'
+      : '自动归集未开启。可先用“干跑校验”验证交易构造，再设置 AUTO_SWEEP_ENABLED=true 启用。';
     try {
       const data = await request('/api/admin/sweeps');
       const list = data.data || [];
-      el.innerHTML = list.length ? list.map((s: any) => `<div class="card p-4 flex flex-wrap gap-3 items-center"><code class="text-xs">#${s.id}</code><span class="badge bg-amber-50 text-amber-600">${esc(s.status)}</span><span class="text-sm">${esc(s.source_address)}</span><span class="text-sm text-slate-500">${esc(s.note || '')}</span><button onclick="completeSweep(${s.id})" class="btn-ghost !py-1.5 !px-3 text-xs ml-auto">记录已完成</button></div>`).join('') : '<div class="text-center text-slate-400 py-12">暂无归集任务</div>';
+      const stMap: Record<string, { cls: string; text: string }> = {
+        pending: { cls: 'bg-amber-50 text-amber-600', text: '待归集' },
+        submitted: { cls: 'bg-sky-50 text-sky-600', text: '已提交' },
+        completed: { cls: 'bg-emerald-50 text-emerald-600', text: '已完成' },
+        failed: { cls: 'bg-rose-50 text-rose-600', text: '失败' },
+      };
+      el.innerHTML = list.length ? list.map((s: any) => {
+        const st = stMap[s.status] || stMap.pending;
+        return `<div class="card p-4 flex flex-wrap gap-3 items-center">
+          <code class="text-xs text-slate-400">#${s.id}</code>
+          <span class="badge ${st.cls}">${st.text}</span>
+          <span class="text-sm font-semibold">${(Number(s.amount || 0) / 1e6).toFixed(2)} USDT</span>
+          <span class="text-xs text-slate-500">${esc(s.product_title || '')}</span>
+          <code class="text-xs text-slate-400 break-all">${esc(s.source_address)}</code>
+          ${s.to_address ? `<span class="text-xs text-slate-400">→ ${esc(s.to_address.slice(0, 16))}…</span>` : ''}
+          ${s.tx_hash ? `<code class="text-xs text-emerald-600 break-all">${esc(s.tx_hash.slice(0, 20))}…</code>` : ''}
+          ${s.note ? `<span class="text-xs text-slate-400">${esc(s.note)}</span>` : ''}
+          <div class="ml-auto flex gap-2">
+            <button onclick="runSweep(${s.id}, true)" class="btn-ghost !py-1.5 !px-3 text-xs">干跑校验</button>
+            ${autoOn ? `<button onclick="runSweep(${s.id}, false)" class="btn-sakura !py-1.5 !px-3 text-xs">执行归集</button>` : ''}
+            <button onclick="completeSweep(${s.id})" class="btn-ghost !py-1.5 !px-3 text-xs">记录完成</button>
+          </div>
+        </div>`;
+      }).join('') : '<div class="text-center text-slate-400 py-12">暂无归集任务</div>';
     } catch { el.textContent = '加载失败'; }
+  }
+
+  async function runSweep(id: number, dryRun: boolean) {
+    if (!dryRun && !confirm('确认执行真实转账？请确保源地址有足够 TRX 能量费。')) return;
+    try {
+      const data = await request('/api/admin/sweeps', { method: 'POST', body: JSON.stringify({ id, action: dryRun ? 'dry_run' : 'sweep' }) });
+      const r = data.data || {};
+      let msg = r.note || (dryRun ? '干跑完成' : '归集已提交');
+      if (r.txID) msg += `\nTxID: ${r.txID}`;
+      if (dryRun && r.raw_data_hex) msg += `\nraw_data_hex: ${r.raw_data_hex}`;
+      alert(msg);
+      loadSweeps();
+    } catch (e: any) { alert(e.message); }
   }
 
   async function completeSweep(id: number) {
@@ -215,6 +347,180 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
     if (tx === null) return;
     try { await request('/api/admin/sweeps', { method: 'POST', body: JSON.stringify({ id, status: 'completed', tx_hash: tx }) }); loadSweeps(); }
     catch (e: any) { alert(e.message); }
+  }
+
+  // ============ 退款 ============
+  const refundStatusMap: Record<string, { cls: string; text: string }> = {
+    requested: { cls: 'bg-amber-50 text-amber-600', text: '待处理' },
+    processing: { cls: 'bg-sky-50 text-sky-600', text: '进行中' },
+    refunded: { cls: 'bg-emerald-50 text-emerald-600', text: '已退款' },
+    failed: { cls: 'bg-rose-50 text-rose-600', text: '失败' },
+  };
+
+  async function loadRefunds() {
+    const el = document.querySelector('#refund-list') as HTMLElement;
+    try {
+      const data = await request('/api/admin/refunds');
+      const list = data.data || [];
+      el.innerHTML = list.length ? list.map((r: any) => {
+        const st = refundStatusMap[r.status] || refundStatusMap.requested;
+        return `<div class="card p-4 flex flex-wrap gap-3 items-center">
+          <code class="text-xs text-slate-400">#${r.id}</code>
+          <span class="badge ${st.cls}">${st.text}</span>
+          <code class="text-xs text-slate-400">${esc(r.order_id)}</code>
+          <span class="font-semibold text-rose-500">${(Number(r.amount || 0) / 1e6).toFixed(2)} USDT</span>
+          <span class="text-xs text-slate-500">${esc(r.product_title || '')}</span>
+          ${r.refund_address ? `<code class="text-xs text-slate-400">→ ${esc(r.refund_address.slice(0, 16))}…</code>` : ''}
+          ${r.tx_hash ? `<code class="text-xs text-emerald-600">${esc(r.tx_hash.slice(0, 20))}…</code>` : ''}
+          ${r.note ? `<span class="text-xs text-slate-400">${esc(r.note)}</span>` : ''}
+          <div class="ml-auto flex gap-2">
+            <select onchange="updateRefund(${r.id}, this.value)" class="input !py-1 !px-2 text-xs w-28">
+              ${['requested', 'processing', 'refunded', 'failed'].map((s) => `<option value="${s}" ${s === r.status ? 'selected' : ''}>${refundStatusMap[s].text}</option>`).join('')}
+            </select>
+          </div>
+        </div>`;
+      }).join('') : '<div class="text-center text-slate-400 py-12">暂无退款记录</div>';
+    } catch { el.textContent = '加载失败'; }
+  }
+
+  function openRefund() { (document.querySelector('#refund-modal') as any).classList.remove('hidden'); (document.querySelector('#refund-msg') as any).textContent = ''; }
+  function closeRefund() { (document.querySelector('#refund-modal') as any).classList.add('hidden'); }
+
+  async function submitRefund() {
+    const order = (document.querySelector('#r-order') as any).value.trim();
+    const amount = (document.querySelector('#r-amount') as any).value;
+    const address = (document.querySelector('#r-address') as any).value.trim();
+    const note = (document.querySelector('#r-note') as any).value.trim();
+    if (!order || !amount || !address) return alert('请填写订单号、金额和退款地址');
+    try {
+      await request('/api/admin/refunds', { method: 'POST', body: JSON.stringify({ order_id: order, amount, refund_address: address, note }) });
+      (document.querySelector('#refund-msg') as any).textContent = '✅ 已创建退款';
+      closeRefund(); loadRefunds();
+    } catch (e: any) { (document.querySelector('#refund-msg') as any).textContent = e.message; }
+  }
+
+  async function updateRefund(id: number, status: string) {
+    try { await request('/api/admin/refunds', { method: 'POST', body: JSON.stringify({ id, status }) }); loadRefunds(); }
+    catch (e: any) { alert(e.message); }
+  }
+
+  // ============ 操作日志 ============
+  async function loadLogs() {
+    const el = document.querySelector('#log-list') as HTMLElement;
+    try {
+      const data = await request('/api/admin/logs');
+      const list = data.data || [];
+      el.innerHTML = list.length ? list.map((l: any) => `<div class="card px-4 py-2.5 flex items-center gap-3"><span class="text-xs text-slate-400 shrink-0">${esc((l.created_at || '').slice(0, 16).replace('T', ' '))}</span><span class="text-sm text-slate-700 break-all">${esc(l.action)}</span></div>`).join('') : '<div class="text-center text-slate-400 py-12">暂无操作日志</div>';
+    } catch { el.textContent = '加载失败'; }
+  }
+
+  // ============ 系统自检 ============
+  async function runSystemCheck() {
+    const el = document.querySelector('#system-result') as HTMLElement;
+    el.innerHTML = '正在自检…';
+    try {
+      const data = await request('/api/admin/system-check');
+      const checks = data.data.checks || [];
+      el.innerHTML = checks.map((c: any) => `<div class="card px-4 py-3 flex items-start gap-3"><span class="text-lg ${c.ok ? 'text-emerald-500' : 'text-rose-500'}">${c.ok ? '✅' : '❌'}</span><div class="min-w-0"><div class="text-sm font-semibold text-slate-700">${esc(c.label)}</div>${c.value ? `<div class="text-xs text-slate-500">${esc(c.value)}</div>` : ''}${c.note ? `<div class="text-xs text-slate-400">${esc(c.note)}</div>` : ''}</div></div>`).join('') || '<div class="text-center text-slate-400 py-8">无结果</div>';
+    } catch (e: any) { el.innerHTML = '<div class="text-rose-500">自检失败：' + esc(e.message) + '</div>'; }
+  }
+
+  // ============ 收款钱包 ============
+  function showMnemonic(mnemonic: string) {
+    (document.querySelector('#wallet-mnemonic') as any).value = mnemonic;
+    (document.querySelector('#wallet-mnemonic-box') as any).classList.remove('hidden');
+  }
+
+  async function loadWallet() {
+    const el = document.querySelector('#wallet-panel') as HTMLElement;
+    try {
+      const data = await request('/api/admin/wallet');
+      const w = data.data || {};
+      (document.querySelector('#wallet-mnemonic-box') as any).classList.add('hidden');
+      const sourceLabel = w.master_source === 'env' ? '外部自定义（TRON_MASTER_ADDRESS 环境变量）' : w.master_source === 'system' ? '系统内置主钱包' : '未设置';
+      if (!w.has_mnemonic) {
+        el.innerHTML = `<div class="card p-6 text-center"><p class="text-4xl mb-3">🏦</p><p class="text-slate-600 mb-4">尚未初始化收款钱包。生成后系统才能自动生成收款地址、并自动归集到主钱包。</p><button onclick="generateWallet()" class="btn-sakura !py-3 !px-8">一键生成收款钱包</button></div>`;
+        return;
+      }
+      el.innerHTML = `<div class="grid sm:grid-cols-2 gap-4">
+        <div class="card p-5"><div class="text-sm text-slate-500">主钱包（归集目标）</div><div class="mt-2"><code class="text-sm break-all">${esc(w.master_address || '未设置')}</code></div><div class="text-xs text-slate-400 mt-1">来源：${esc(sourceLabel)}</div></div>
+        <div class="card p-5"><div class="text-sm text-slate-500">收款地址（子地址）示例</div><div class="mt-2"><code class="text-sm break-all">${esc(w.derived_sample || '—')}</code></div><div class="text-xs text-slate-400 mt-1">每笔订单使用新的唯一地址</div></div>
+        <div class="card p-5"><div class="text-sm text-slate-500">已生成订单数</div><div class="text-2xl font-bold text-slate-800 mt-2">${w.order_count || 0}</div></div>
+        <div class="card p-5"><div class="text-sm text-slate-500">助记词</div><div class="mt-2 text-sm font-semibold text-emerald-600">已保存</div><div class="text-xs text-slate-400 mt-1">生成于 ${esc((w.created_at || '').slice(0, 16).replace('T', ' '))}</div></div>
+      </div>
+      <div class="flex flex-wrap gap-2 mt-4">
+        <button onclick="viewMnemonic()" class="btn-ghost !py-2 !px-4 text-sm">查看 / 导出助记词</button>
+        <button onclick="regenerateWallet()" class="btn-ghost !py-2 !px-4 text-sm !text-rose-500 !border-rose-300">重新生成整套钱包</button>
+        <button onclick="clearMnemonic()" class="btn-ghost !py-2 !px-4 text-sm !text-amber-600 !border-amber-300">备份后从系统清除</button>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">⚠️ 重新生成会<b>作废已派发的所有收款子地址</b>（已成交订单不受影响），请在确认无未结清订单时操作。若想用自己的外部主钱包，可在 Cloudflare 环境变量配置 <code>TRON_MASTER_ADDRESS</code> 覆盖系统内置主钱包。</p>`;
+    } catch { el.textContent = '加载失败'; }
+  }
+
+  async function generateWallet() {
+    if (!confirm('生成后将创建一套专属收款钱包，请立即备份助记词。确定继续？')) return;
+    try {
+      const data = await request('/api/admin/wallet', { method: 'POST', body: JSON.stringify({ action: 'generate' }) });
+      if (data.data.mnemonic) showMnemonic(data.data.mnemonic);
+      loadWallet();
+    } catch (e: any) { alert(e.message); }
+  }
+
+  async function viewMnemonic() {
+    try {
+      const data = await request('/api/admin/wallet');
+      if (!data.data.mnemonic) return alert('系统未保存助记词');
+      showMnemonic(data.data.mnemonic);
+    } catch (e: any) { alert(e.message); }
+  }
+
+  async function copyMnemonic() {
+    const v = (document.querySelector('#wallet-mnemonic') as any).value;
+    if (!v) return;
+    try { await navigator.clipboard.writeText(v); alert('已复制，请粘贴到离线安全位置'); }
+    catch { alert(v); }
+  }
+
+  async function regenerateWallet() {
+    if (!confirm('⚠️ 重新生成会作废旧钱包，已派发但未归集的收款地址将无法再自动归集。请确认没有未结清订单。继续？')) return;
+    const confirm2 = prompt('如确认，请输入：REGENERATE');
+    if (confirm2 !== 'REGENERATE') return;
+    try {
+      const data = await request('/api/admin/wallet', { method: 'POST', body: JSON.stringify({ action: 'regenerate', confirm: 'REGENERATE' }) });
+      if (data.data.mnemonic) showMnemonic(data.data.mnemonic);
+      alert('已生成全新收款钱包。旧子地址作废，请留意未归集订单。');
+      loadWallet();
+    } catch (e: any) { alert(e.message); }
+  }
+
+  async function clearMnemonic() {
+    if (!confirm('将从系统清除助记词（仅保留主钱包地址）。请确认已离线备份。继续？')) return;
+    try { await request('/api/admin/wallet', { method: 'POST', body: JSON.stringify({ action: 'clear' }) }); alert('已清除'); loadWallet(); }
+    catch (e: any) { alert(e.message); }
+  }
+
+  // ============ 查看订单卡密 / 模拟到账 ============
+  function closeCards() { (document.querySelector('#cards-modal') as any).classList.add('hidden'); }
+
+  async function viewCards(orderId: string) {
+    try {
+      const data = await request(`/api/admin/order-cards?order_id=${encodeURIComponent(orderId)}`);
+      (document.querySelector('#cards-modal-title') as any).textContent = `订单卡密 · ${orderId}`;
+      (document.querySelector('#cards-modal-sub') as any).textContent = `${data.data.cards.length} 条`;
+      (document.querySelector('#cards-content') as any).innerHTML = data.data.cards.length
+        ? data.data.cards.map((c: string) => `<div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 font-mono text-sm text-slate-700 break-all">${esc(c)}</div>`).join('')
+        : '<div class="text-center text-slate-400 py-8">该订单暂无卡密</div>';
+      (document.querySelector('#cards-modal') as any).classList.remove('hidden');
+    } catch (e: any) { alert(e.message); }
+  }
+
+  async function simulate(orderId: string) {
+    if (!confirm('确认对该订单“模拟到账”并自动发货？（仅测试，会生成占位交易哈希，不涉及真实资金）')) return;
+    try {
+      const data = await request('/api/admin/simulate-payment', { method: 'POST', body: JSON.stringify({ order_id: orderId }) });
+      alert(data.data.note || '模拟成功');
+      loadOrders();
+    } catch (e: any) { alert(e.message); }
   }
 
   async function loadProducts() {
@@ -268,6 +574,16 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
             ${
               o.status === 'paid' || o.status === 'pending'
                 ? `<button onclick="reship('${o.id}')" class="btn-ghost !py-1.5 !px-3 text-xs">补发</button>`
+                : ''
+            }
+            ${
+              o.status === 'shipped'
+                ? `<button onclick="viewCards('${o.id}')" class="btn-ghost !py-1.5 !px-3 text-xs">看卡</button>`
+                : ''
+            }
+            ${
+              o.status === 'pending' || o.status === 'paid'
+                ? `<button onclick="simulate('${o.id}')" class="btn-ghost !py-1.5 !px-3 text-xs !text-amber-600">模拟到账</button>`
                 : ''
             }
             <button onclick="copyTx(\`${esc(o.tx_hash || '')}\`)" class="btn-ghost !py-1.5 !px-3 text-xs" title="复制交易哈希">Tx</button>
@@ -410,6 +726,23 @@ const site = await getSiteConfig((Astro as any).locals?.runtime);
   (window as any).loadPayments = loadPayments;
   (window as any).loadSweeps = loadSweeps;
   (window as any).completeSweep = completeSweep;
+  (window as any).runSweep = runSweep;
+  (window as any).loadRefunds = loadRefunds;
+  (window as any).openRefund = openRefund;
+  (window as any).closeRefund = closeRefund;
+  (window as any).submitRefund = submitRefund;
+  (window as any).updateRefund = updateRefund;
+  (window as any).loadLogs = loadLogs;
+  (window as any).runSystemCheck = runSystemCheck;
+  (window as any).loadWallet = loadWallet;
+  (window as any).generateWallet = generateWallet;
+  (window as any).viewMnemonic = viewMnemonic;
+  (window as any).copyMnemonic = copyMnemonic;
+  (window as any).regenerateWallet = regenerateWallet;
+  (window as any).clearMnemonic = clearMnemonic;
+  (window as any).viewCards = viewCards;
+  (window as any).closeCards = closeCards;
+  (window as any).simulate = simulate;
 
   // 初始加载
   loadProducts();
