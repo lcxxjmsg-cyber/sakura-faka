@@ -29,16 +29,23 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
     const dryRun = action === 'dry_run';
     if (!dryRun && env.AUTO_SWEEP_ENABLED !== 'true') return apiErr('自动归集未启用，请先设置 AUTO_SWEEP_ENABLED=true 后重试');
     const res: SweepResult = await trySweep(env, task, dryRun);
-    if (res.status === 'completed') {
-      await env.DB.prepare(`UPDATE sweep_tasks SET status='completed', tx_hash=?, amount=?, note=?, updated_at=? WHERE id=?`)
-        .bind(res.txID || '', res.amount || task.amount, res.note || '', new Date().toISOString(), id).run();
-    } else if (res.ok && dryRun) {
-      // 干跑成功：仅记录信息，不改变任务状态，写入临时说明
-      await env.DB.prepare(`UPDATE sweep_tasks SET note=?, updated_at=? WHERE id=?`)
-        .bind(res.note || '', new Date().toISOString(), id).run();
-    } else if (!res.ok) {
-      await env.DB.prepare(`UPDATE sweep_tasks SET status='failed', note=?, tx_hash=COALESCE(?, tx_hash), updated_at=? WHERE id=?`)
-        .bind(res.note || '失败', res.txID || '', new Date().toISOString(), id).run();
+    const now = new Date().toISOString();
+
+    if (dryRun || res.status === 'pending') {
+      // 干跑仅记录信息，不改状态
+      await env.DB.prepare(`UPDATE sweep_tasks SET note=?, updated_at=? WHERE id=?`).bind(res.note || '', now, id).run();
+    } else if (res.status === 'broadcasting') {
+      await env.DB.prepare(`UPDATE sweep_tasks SET status='broadcasting', tx_hash=?, broadcast_at=?, last_error='', note=?, updated_at=? WHERE id=?`)
+        .bind(res.txID || '', now, res.note || '', now, id).run();
+    } else if (res.status === 'completed') {
+      await env.DB.prepare(`UPDATE sweep_tasks SET status='completed', tx_hash=?, confirmed_at=?, note=?, updated_at=? WHERE id=?`)
+        .bind(res.txID || '', now, res.note || '', now, id).run();
+    } else if (res.status === 'failed_permanent') {
+      await env.DB.prepare(`UPDATE sweep_tasks SET status='failed_permanent', last_error=?, note=?, updated_at=? WHERE id=?`)
+        .bind(res.note || '', res.note || '', now, id).run();
+    } else {
+      await env.DB.prepare(`UPDATE sweep_tasks SET status=?, last_error=?, retry_count=retry_count+1, next_retry_at=?, note=?, updated_at=? WHERE id=?`)
+        .bind(res.status, res.note || '', new Date(Date.now() + 60000).toISOString(), res.note || '', now, id).run();
     }
     await logAdminAction(env, `归集任务 #${id} ${dryRun ? '干跑' : '执行'} => ${res.status || res.note}`);
     return apiOk(res);

@@ -1,10 +1,17 @@
 import { processPendingOrders, retryPendingEmails } from './lib/orders';
 import { processPendingSweeps } from './lib/tron-sweep';
+import { runJob } from './lib/jobs';
 import type { StoreEnv } from './types';
 
 export default {
   async scheduled(_controller: ScheduledController, env: StoreEnv, ctx: ExecutionContext) {
-    ctx.waitUntil(Promise.all([processPendingOrders(env), retryPendingEmails(env), processPendingSweeps(env)]));
+    ctx.waitUntil((async () => {
+      await Promise.all([
+        runJob(env, 'paymentScanner', async (e) => ({ processed: await processPendingOrders(e), failed: 0 })),
+        runJob(env, 'emailRetry', async (e) => ({ processed: await retryPendingEmails(e), failed: 0 })),
+        runJob(env, 'sweepProcessor', (e) => processPendingSweeps(e)),
+      ]);
+    })());
   },
 
   async fetch(request: Request, env: StoreEnv) {
@@ -12,8 +19,10 @@ export default {
     if (!expected || request.headers.get('x-cron-secret') !== expected) {
       return new Response('Unauthorized', { status: 401 });
     }
-    const processed = await processPendingOrders(env);
-    const sweeps = await processPendingSweeps(env);
-    return Response.json({ ok: true, processed, sweeps, at: new Date().toISOString() });
+    const results = await Promise.all([
+      runJob(env, 'paymentScanner', async (e) => ({ processed: await processPendingOrders(e), failed: 0 })),
+      runJob(env, 'sweepProcessor', (e) => processPendingSweeps(e)),
+    ]);
+    return Response.json({ ok: true, results, at: new Date().toISOString() });
   },
 };

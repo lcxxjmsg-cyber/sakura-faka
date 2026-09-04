@@ -352,10 +352,14 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       const data = await request('/api/admin/sweeps');
       const list = data.data || [];
       const stMap: Record<string, { cls: string; text: string }> = {
-        pending: { cls: 'bg-amber-50 text-amber-600', text: '待归集' },
-        submitted: { cls: 'bg-sky-50 text-sky-600', text: '已提交' },
+        pending: { cls: 'bg-amber-50 text-amber-600', text: '待处理' },
+        need_gas: { cls: 'bg-orange-50 text-orange-600', text: '缺TRX' },
+        ready: { cls: 'bg-emerald-50 text-emerald-600', text: '就绪' },
+        broadcasting: { cls: 'bg-sky-50 text-sky-600', text: '广播中' },
+        confirming: { cls: 'bg-violet-50 text-violet-600', text: '确认中' },
+        retry: { cls: 'bg-orange-50 text-orange-600', text: '重试中' },
         completed: { cls: 'bg-emerald-50 text-emerald-600', text: '已完成' },
-        failed: { cls: 'bg-rose-50 text-rose-600', text: '失败' },
+        failed_permanent: { cls: 'bg-rose-50 text-rose-600', text: '失败' },
       };
       el.innerHTML = list.length ? list.map((s: any) => {
         const st = stMap[s.status] || stMap.pending;

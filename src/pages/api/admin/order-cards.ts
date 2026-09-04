@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
+import { getOrderCards } from '@/lib/db';
 
 export const prerender = false;
 
@@ -15,12 +16,7 @@ export const GET: APIRoute = async ({ request, locals, url }: any) => {
 
   const order = await env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(id).first<any>();
   if (!order) return apiErr('订单不存在', 404);
-  if (!order.card_ids) return apiOk({ order, cards: [], note: '该订单暂无卡密记录' });
 
-  const ids = order.card_ids.split(',').map((x: string) => Number(x)).filter(Boolean);
-  if (!ids.length) return apiOk({ order, cards: [], note: '该订单暂无卡密记录' });
-
-  const placeholders = ids.map(() => '?').join(',');
-  const { results } = await env.DB.prepare(`SELECT card FROM cards WHERE id IN (${placeholders})`).bind(...ids).all();
-  return apiOk({ order, cards: (results || []).map((r: any) => r.card) });
+  const cards = await getOrderCards(env.DB, id);
+  return apiOk({ order, cards: cards.map((c) => c.card) });
 };

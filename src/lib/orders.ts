@@ -1,5 +1,5 @@
 import type { StoreEnv, Order } from '@/types';
-import { getProduct, getOrder, randId } from '@/lib/db';
+import { getProduct, getOrder, getOrderCards, linkOrderCards, randId } from '@/lib/db';
 import { deriveTronAddress, checkUsdtPayment } from '@/lib/tron';
 import { sendDeliveryEmail } from '@/lib/mail';
 import { getWalletMnemonic, getMasterAddress } from '@/lib/wallet';
@@ -260,6 +260,9 @@ export async function fulfillOrder(env: StoreEnv, order: Order, txHash: string, 
     return false;
   }
 
+  // 写入订单-卡密关联（规范化）
+  if (shippedOk) { try { await linkOrderCards(db, order.id, cardIds); } catch { /* 尽力而为 */ } }
+
   // 6) 尽力而为：邮件 + 归集任务（只发生一次 shipping 成功后）
   if (shippedOk && order.contact_email && !order.email_sent_at) {
     try {
@@ -287,11 +290,9 @@ export async function retryPendingEmails(env: StoreEnv): Promise<number> {
   let sentCount = 0;
   for (const order of results || []) {
     if (!order.card_ids) continue;
-    const ids = order.card_ids.split(',').map(Number).filter(Boolean);
-    if (!ids.length) continue;
-    const placeholders = ids.map(() => '?').join(',');
-    const cards = await env.DB.prepare(`SELECT card FROM cards WHERE id IN (${placeholders})`).bind(...ids).all<{ card: string }>();
-    if (await sendDeliveryEmail(env, order, (cards.results || []).map((row) => row.card))) {
+    const cards = await getOrderCards(env.DB, order.id);
+    if (!cards.length) continue;
+    if (await sendDeliveryEmail(env, order, cards.map((c) => c.card))) {
       await env.DB.prepare(`UPDATE orders SET email_sent_at=? WHERE id=? AND email_sent_at IS NULL`).bind(new Date().toISOString(), order.id).run();
       sentCount++;
     }

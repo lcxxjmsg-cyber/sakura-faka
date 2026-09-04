@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv } from '@/lib/api';
 import { queryOrder } from '@/lib/orders';
+import { getOrderCards } from '@/lib/db';
 
 export const prerender = false;
 
@@ -17,13 +18,6 @@ export const GET: APIRoute = async ({ url, locals }: any) => {
   // 私密 token 校验：只有下单买家才能查看卡密
   if (!token || token !== order.view_token) return apiErr('无权查看卡密', 403);
 
-  if (!order.card_ids) return apiErr('订单无卡密记录', 400);
-
-  const ids = order.card_ids.split(',').map((x: string) => Number(x)).filter(Boolean);
-  if (!ids.length) return apiErr('订单无卡密记录', 400);
-
-  const placeholders = ids.map(() => '?').join(',');
-  const { results } = await env.DB.prepare(`SELECT card FROM cards WHERE id IN (${placeholders})`).bind(...ids).all();
-  const cards = (results || []).map((r: any) => r.card);
-  return apiOk(cards);
+  const cards = await getOrderCards(env.DB, id);
+  return apiOk(cards.map((c) => c.card));
 };

@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS cards (
   product_id  INTEGER NOT NULL,
   card        TEXT NOT NULL,                -- 卡密内容
   status      INTEGER NOT NULL DEFAULT 0,   -- 0未售 1已售
-  order_id    INTEGER NULL,
+  order_id    TEXT NULL,
   sold_at     TEXT NULL,
   created_at  TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (product_id) REFERENCES products(id)
@@ -33,6 +33,17 @@ CREATE TABLE IF NOT EXISTS cards (
 CREATE INDEX IF NOT EXISTS idx_cards_product ON cards(product_id);
 CREATE INDEX IF NOT EXISTS idx_cards_status ON cards(status, product_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_cards_product_value ON cards(product_id, card);
+
+-- 订单-卡密关联表（替代 orders.card_ids 逗号字符串）
+CREATE TABLE IF NOT EXISTS order_cards (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id    TEXT NOT NULL,
+  card_id     INTEGER NOT NULL,
+  created_at  TEXT DEFAULT (datetime('now')),
+  UNIQUE(card_id),
+  UNIQUE(order_id, card_id)
+);
+CREATE INDEX IF NOT EXISTS idx_order_cards_order ON order_cards(order_id);
 
 CREATE TABLE IF NOT EXISTS orders (
   id          TEXT PRIMARY KEY,             -- 订单号(唯一)
@@ -116,8 +127,13 @@ CREATE TABLE IF NOT EXISTS sweep_tasks (
   asset          TEXT NOT NULL DEFAULT 'USDT',
   address_index  INTEGER DEFAULT -1,        -- HD 派生索引(用于本地签名)
   product_title  TEXT DEFAULT '',
-  status         TEXT NOT NULL DEFAULT 'pending', -- pending/submitted/completed/failed
+  status         TEXT NOT NULL DEFAULT 'pending', -- pending/need_gas/ready/broadcasting/confirming/retry/completed/failed
   tx_hash        TEXT DEFAULT '',
+  retry_count    INTEGER DEFAULT 0,
+  next_retry_at  TEXT NULL,
+  last_error     TEXT DEFAULT '',
+  broadcast_at   TEXT NULL,
+  confirmed_at   TEXT NULL,
   note           TEXT DEFAULT '',
   created_at     TEXT DEFAULT (datetime('now')),
   updated_at     TEXT DEFAULT (datetime('now'))
