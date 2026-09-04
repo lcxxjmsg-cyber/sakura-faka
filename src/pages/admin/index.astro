@@ -272,9 +272,14 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
 
   const orderStatusMap: any = {
     pending: { text: '待支付', cls: 'bg-amber-50 text-amber-600 border border-amber-200' },
-    paid: { text: '已付待发', cls: 'bg-rose-50 text-rose-600 border border-rose-200' },
+    payment_detected: { text: '已到账·确认中', cls: 'bg-sky-50 text-sky-600 border border-sky-200' },
+    paid: { text: '已确认·待发货', cls: 'bg-rose-50 text-rose-600 border border-rose-200' },
+    fulfilling: { text: '发货中', cls: 'bg-violet-50 text-violet-600 border border-violet-200' },
     shipped: { text: '已发货', cls: 'bg-emerald-50 text-emerald-600 border border-emerald-200' },
     closed: { text: '已关闭', cls: 'bg-slate-100 text-slate-400 border border-slate-200' },
+    manual_review: { text: '人工处理', cls: 'bg-orange-50 text-orange-600 border border-orange-200' },
+    refund_pending: { text: '退款中', cls: 'bg-fuchsia-50 text-fuchsia-600 border border-fuchsia-200' },
+    refunded: { text: '已退款', cls: 'bg-teal-50 text-teal-600 border border-teal-200' },
   };
   function esc(s: string) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!)); }
 
@@ -483,21 +488,19 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       (document.querySelector('#wallet-mnemonic-box') as any).classList.add('hidden');
       const sourceLabel = w.master_source === 'env' ? '外部自定义（TRON_MASTER_ADDRESS 环境变量）' : w.master_source === 'system' ? '系统内置主钱包' : '未设置';
       if (!w.has_mnemonic) {
-        el.innerHTML = `<div class="card p-6 text-center"><p class="text-4xl mb-3">🏦</p><p class="text-slate-600 mb-4">尚未初始化收款钱包。生成后系统才能自动生成收款地址、并自动归集到主钱包。</p><button onclick="generateWallet()" class="btn-sakura !py-3 !px-8">一键生成收款钱包</button></div>`;
+        el.innerHTML = `<div class="card p-6 text-center"><p class="text-4xl mb-3">🏦</p><p class="text-slate-600 mb-2">尚未初始化收款钱包。生成后系统才能自动生成收款地址、并自动归集到主钱包。</p>${w.has_encryption_key ? '' : '<p class="text-sm text-amber-600 mb-3">提示：请先在 Cloudflare Secrets 配置 WALLET_ENCRYPTION_KEY（用于加密助记词）后再生成。</p>'}<button onclick="generateWallet()" class="btn-sakura !py-3 !px-8">一键生成收款钱包</button></div>`;
         return;
       }
       el.innerHTML = `<div class="grid sm:grid-cols-2 gap-4">
         <div class="card p-5"><div class="text-sm text-slate-500">主钱包（归集目标）</div><div class="mt-2"><code class="text-sm break-all">${esc(w.master_address || '未设置')}</code></div><div class="text-xs text-slate-400 mt-1">来源：${esc(sourceLabel)}</div></div>
-        <div class="card p-5"><div class="text-sm text-slate-500">收款地址（子地址）示例</div><div class="mt-2"><code class="text-sm break-all">${esc(w.derived_sample || '—')}</code></div><div class="text-xs text-slate-400 mt-1">每笔订单使用新的唯一地址</div></div>
-        <div class="card p-5"><div class="text-sm text-slate-500">已生成订单数</div><div class="text-2xl font-bold text-slate-800 mt-2">${w.order_count || 0}</div></div>
-        <div class="card p-5"><div class="text-sm text-slate-500">助记词</div><div class="mt-2 text-sm font-semibold text-emerald-600">已保存</div><div class="text-xs text-slate-400 mt-1">生成于 ${esc((w.created_at || '').slice(0, 16).replace('T', ' '))}</div></div>
+        <div class="card p-5"><div class="text-sm text-slate-500">助记词</div><div class="mt-2 text-sm font-semibold text-emerald-600">已加密保存 ${esc(w.mnemonic_masked || '')}</div><div class="text-xs text-slate-400 mt-1">生成于 ${esc((w.created_at || '').slice(0, 16).replace('T', ' '))} · 已生成订单 ${w.order_count || 0}</div></div>
       </div>
       <div class="flex flex-wrap gap-2 mt-4">
         <button onclick="viewMnemonic()" class="btn-ghost !py-2 !px-4 text-sm">查看 / 导出助记词</button>
         <button onclick="regenerateWallet()" class="btn-ghost !py-2 !px-4 text-sm !text-rose-500 !border-rose-300">重新生成整套钱包</button>
         <button onclick="clearMnemonic()" class="btn-ghost !py-2 !px-4 text-sm !text-amber-600 !border-amber-300">备份后从系统清除</button>
       </div>
-      <p class="text-xs text-slate-500 mt-3">⚠️ 重新生成会<b>作废已派发的所有收款子地址</b>（已成交订单不受影响），请在确认无未结清订单时操作。若想用自己的外部主钱包，可在 Cloudflare 环境变量配置 <code>TRON_MASTER_ADDRESS</code> 覆盖系统内置主钱包。</p>`;
+      <p class="text-xs text-slate-500 mt-3">⚠️ 重新生成会<b>作废已派发的所有收款子地址</b>（已成交订单不受影响）。导出助记词需再次输入管理员密码。若想用自己的外部主钱包，可在 Cloudflare 环境变量配置 <code>TRON_MASTER_ADDRESS</code> 覆盖。</p>`;
     } catch { el.textContent = '加载失败'; }
   }
 
@@ -511,9 +514,10 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   }
 
   async function viewMnemonic() {
+    const password = prompt('为安全起见，请输入管理员密码以导出助记词');
+    if (password === null) return;
     try {
-      const data = await request('/api/admin/wallet');
-      if (!data.data.mnemonic) return alert('系统未保存助记词');
+      const data = await request('/api/admin/wallet', { method: 'POST', body: JSON.stringify({ action: 'reveal', password }) });
       showMnemonic(data.data.mnemonic);
     } catch (e: any) { alert(e.message); }
   }

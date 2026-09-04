@@ -4,6 +4,8 @@ import { createOrder } from '@/lib/orders';
 
 export const prerender = false;
 
+const MAX_ORDER_QTY = 10;
+
 export const POST: APIRoute = async ({ request, locals }: any) => {
   const env = getEnv(locals?.runtime);
   if (!env) return apiErr('服务器配置错误', 500);
@@ -12,11 +14,16 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   const body = await request.json().catch(() => ({}));
   const productId = Number(body.product_id);
   const qtyRaw = body.qty;
-  const qty = Math.trunc(Number(qtyRaw));
   const email = String(body.email || '').trim().slice(0, 200);
 
-  if (!productId || !Number.isFinite(productId)) return apiErr('请选择商品');
-  if (!Number.isInteger(qty)) return apiErr('数量需为整数');
+  if (!productId || !Number.isFinite(productId) || productId < 0) return apiErr('请选择商品');
+
+  // 严格数量校验：拒绝 1.1 / 1.9 / NaN / Infinity / 字符串垃圾
+  const qty = Number(qtyRaw);
+  if (!Number.isSafeInteger(qty) || qty < 1 || qty > MAX_ORDER_QTY) {
+    return apiErr(`数量需为 1-${MAX_ORDER_QTY} 的整数`);
+  }
+
   try {
     const result = await createOrder(env, productId, qty, email);
     if (result.ok === false) return apiErr(result.error);

@@ -9,6 +9,7 @@ import {
   tronToHex21,
   hexToBytes,
   bytesToHex,
+  validateTronAddress,
 } from '@/lib/tron';
 import { getWalletMnemonic, getMasterAddress } from '@/lib/wallet';
 
@@ -154,7 +155,7 @@ export async function trySweep(env: StoreEnv, task: SweepTask, dryRun: boolean):
   const toAddress = await getMasterAddress(env) || task.to_address;
   if (!toAddress) return fail('未配置归集目标（TRON_MASTER_ADDRESS 或系统主钱包）');
   if (task.address_index == null || task.address_index < 0) return fail('缺少地址索引，无法本地签名');
-  try { tronToHex21(toAddress); } catch { return fail('归集目标地址格式错误'); }
+  if (!validateTronAddress(toAddress)) return fail('归集目标地址无效');
 
   // 校验派生地址与任务源地址一致，防止误归集
   const derivedAddress = deriveTronAddress(mnemonic, task.address_index);

@@ -125,11 +125,51 @@ CREATE TABLE IF NOT EXISTS sweep_tasks (
 CREATE INDEX IF NOT EXISTS idx_sweep_status ON sweep_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_sweep_address ON sweep_tasks(source_address);
 
+-- 订单状态事件审计（所有状态变更统一记录）
+CREATE TABLE IF NOT EXISTS order_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id    TEXT NOT NULL,
+  event_type  TEXT NOT NULL,
+  from_status TEXT DEFAULT '',
+  to_status   TEXT DEFAULT '',
+  metadata    TEXT DEFAULT '',
+  created_at  TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_order_events_order ON order_events(order_id, created_at);
+
+-- 支付事件审计（detected / confirmed / failed / provider_error）
+CREATE TABLE IF NOT EXISTS payment_events (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id      TEXT NOT NULL,
+  tx_hash       TEXT DEFAULT '',
+  event_type    TEXT NOT NULL,
+  confirmations INTEGER DEFAULT 0,
+  amount        TEXT DEFAULT '0',
+  metadata      TEXT DEFAULT '',
+  created_at    TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_payment_events_order ON payment_events(order_id, created_at);
+
+-- 定时 Job 执行记录
+CREATE TABLE IF NOT EXISTS job_runs (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  job         TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'running', -- running/finished/failed
+  processed   INTEGER DEFAULT 0,
+  failed      INTEGER DEFAULT 0,
+  error       TEXT DEFAULT '',
+  started_at  TEXT DEFAULT (datetime('now')),
+  finished_at TEXT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_job_runs_job ON job_runs(job, started_at DESC);
+
 -- 系统内置收款钱包元信息（单行表, id 恒为 1）
--- mnemonic: BIP39 助记词（系统生成并保存；也可不保存，由用户离线备份）
--- master_address: 归集目标主钱包（派生自助记词；也可由环境变量 TRON_MASTER_ADDRESS 覆盖）
+-- encrypted_mnemonic: AES-256-GCM 加密后的助记词（密钥为 Secret WALLET_ENCRYPTION_KEY，绝不存 D1）
+-- master_address: 归集目标主钱包（公开地址）；也可由环境变量 TRON_MASTER_ADDRESS 覆盖
+-- mnemonic: 仅为老库兼容保留（升级后迁移到 encrypted_mnemonic 并置空）
 CREATE TABLE IF NOT EXISTS wallet_meta (
   id                   INTEGER PRIMARY KEY CHECK (id = 1),
+  encrypted_mnemonic   TEXT DEFAULT '',
   mnemonic             TEXT DEFAULT '',
   master_address       TEXT DEFAULT '',
   source               TEXT DEFAULT '',   -- 'system' | '' (custom/env)

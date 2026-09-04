@@ -164,7 +164,9 @@ const fmtPrice = formatUsdt(price);
       const data = await res.json();
       if (!data.ok) { tipEl.textContent = data.error || '检测失败'; return; }
       if (data.data.status === 'shipped') { showCards({ id: orderId }); clearPolling(); }
-      else if (data.data.status === 'paid') tipEl.textContent = `已检测到支付，确认数 ${data.data.confirmations || 0}，请稍候`;
+      else if (data.data.status === 'payment_detected') tipEl.textContent = `已检测到付款，确认数 ${data.data.confirmations || 0}，请稍候`;
+      else if (data.data.status === 'paid' || data.data.status === 'fulfilling') tipEl.textContent = `支付已确认，正在自动发货…`;
+      else if (data.data.status === 'manual_review') tipEl.textContent = `订单需人工处理，请稍候或联系商家`;
       else if (data.data.status === 'closed') tipEl.textContent = '订单已关闭';
       else tipEl.textContent = '暂未检测到足额支付，请确认网络和金额';
     } catch { tipEl.textContent = '检测失败，请稍后重试'; }
@@ -219,7 +221,9 @@ const fmtPrice = formatUsdt(price);
         if (!data.ok) return;
         const o = data.data;
         if (o.status === 'shipped') { showCards(o); clearPolling(); }
-        else if (o.status === 'paid') { tipEl.textContent = '已支付，确认中…'; }
+        else if (o.status === 'paid' || o.status === 'fulfilling') { tipEl.textContent = '支付已确认，正在自动发货…'; }
+        else if (o.status === 'payment_detected') { tipEl.textContent = `已检测到付款，确认中…`; }
+        else if (o.status === 'manual_review') { tipEl.textContent = '订单需人工处理，请稍候'; }
         else if (o.status === 'closed') {
           clearPolling();
           tipEl.textContent = '订单已关闭，请重新下单';

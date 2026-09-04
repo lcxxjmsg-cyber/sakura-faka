@@ -172,16 +172,61 @@ export function deriveTronPrivateKey(mnemonic: string, index: number): string | 
 }
 
 // ============================================================
+// TRON 地址严格校验：Base58 合法、解码长度、0x41 前缀、checksum、canonical
+// ============================================================
+export function validateTronAddress(address: string): boolean {
+  try {
+    const raw = base58Decode(address);
+    if (raw.length !== 25) return false;
+    if (raw[0] !== 0x41) return false;
+    const payload = raw.slice(0, 21);
+    const ck1 = sha256Bytes(payload);
+    const ck2 = sha256Bytes(ck1);
+    for (let i = 0; i < 4; i++) if (raw[21 + i] !== ck2[i]) return false;
+    return evmToTron('0x' + bytesToHex(payload.slice(1))) === address;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================
 // 链上监听：查询某子地址的 USDT(TRC-20) 到账确认情况
+// provider_ok=false 表示 RPC 出错（网络/超时），绝不能当作"未付款"。
 // ============================================================
 export type TronPaymentCheck = {
+  provider_ok: boolean;
   found: boolean;
-  txHash: string;
-  value: string; // 最小单位整数
   confirmed: boolean;
   confirmations: number;
-  fromAddress: string;
+  tx_hash: string;
+  from_address: string;
+  to_address: string;
+  value: string; // 最小单位整数
+  block_number: number;
+  error_code: string;
+  error_message: string;
 };
+
+const RPC_FETCH_TIMEOUT_MS = 8000;
+const RPC_MAX_ATTEMPTS = 2;
+
+async function fetchJsonWithRetry(url: string, attempts = RPC_MAX_ATTEMPTS): Promise<any> {
+  let lastErr: any = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), RPC_FETCH_TIMEOUT_MS);
+      const res = await fetch(url, { headers: { accept: 'application/json' }, signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) { lastErr = new Error(`HTTP ${res.status}`); continue; }
+      return await res.json();
+    } catch (e: any) {
+      lastErr = e;
+      if (attempts > 1) await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+    }
+  }
+  throw lastErr || new Error('request failed');
+}
 
 export async function checkUsdtPayment(
   rpcUrl: string,
@@ -190,79 +235,63 @@ export async function checkUsdtPayment(
   minConfirmations: number,
   createdAt?: string,
 ): Promise<TronPaymentCheck> {
-  const notFound: TronPaymentCheck = {
-    found: false,
-    txHash: '',
-    value: '0',
-    confirmed: false,
-    confirmations: 0,
-    fromAddress: '',
-  };
+  const err = (code: string, message: string): TronPaymentCheck => ({
+    provider_ok: false, found: false, confirmed: false, confirmations: 0,
+    tx_hash: '', from_address: '', to_address: address, value: '0', block_number: 0,
+    error_code: code, error_message: message,
+  });
+  const notFound = (): TronPaymentCheck => ({
+    provider_ok: true, found: false, confirmed: false, confirmations: 0,
+    tx_hash: '', from_address: '', to_address: address, value: '0', block_number: 0,
+    error_code: '', error_message: '',
+  });
 
   try {
-    // 获取当前链高度（用于计算交易确认数）
     const latestBlock = await getLatestBlockHeight(rpcUrl);
-    if (latestBlock === null) return notFound;
-
-    const res = await fetch(`${rpcUrl}/v1/accounts/${address}/transactions/trc20`, {
-      headers: { accept: 'application/json' },
-    });
-    if (!res.ok) return notFound;
-    const data: any = await res.json();
+    if (latestBlock === null) return err('RPC_BLOCK', '无法获取最新区块高度');
+    const data: any = await fetchJsonWithRetry(`${rpcUrl}/v1/accounts/${address}/transactions/trc20`);
     const txs = data?.data || [];
 
     let best: any = null;
     let bestValue = 0n;
     for (const tx of txs) {
-      if (tx.token_info?.address?.toLowerCase() !== USDT_TRC20_CONTRACT.toLowerCase()) continue;
-      if (tx.to?.toLowerCase() !== address.toLowerCase()) continue;
-
-      const valueStr = tx.value || '0';
+      if (String(tx.token_info?.address ?? '').toLowerCase() !== USDT_TRC20_CONTRACT.toLowerCase()) continue;
+      if (String(tx.to ?? '').toLowerCase() !== address.toLowerCase()) continue;
+      if (tx.contract_ret !== 'SUCCESS' && tx.contract_ret !== undefined) continue;
       let val: bigint;
-      try {
-        val = BigInt(valueStr);
-      } catch {
-        continue;
-      }
-      const requiredBig = BigInt(required);
-      // 收款地址按订单独立分配，必须足额，避免少付也触发自动发货。
-      const minOk = val >= requiredBig;
-      if (!minOk) continue;
+      try { val = BigInt(tx.value || '0'); } catch { continue; }
+      if (val < BigInt(required)) continue; // 必须足额，避免少付触发
       if (createdAt && tx.block_timestamp && Number(tx.block_timestamp) < Date.parse(createdAt) - 120000) continue;
-
-      if (val > bestValue) {
-        bestValue = val;
-        best = tx;
-      }
+      if (val > bestValue) { bestValue = val; best = tx; }
     }
 
-    if (!best) return notFound;
+    if (!best) return notFound();
 
     const txBlock = Number(best.blockNumber ?? best.block ?? 0);
     const confirmations = txBlock > 0 ? Math.max(1, latestBlock - txBlock + 1) : 0;
     return {
+      provider_ok: true,
       found: true,
-      txHash: best.transaction_id || best.hash || '',
-      value: bestValue.toString(),
       confirmed: confirmations >= minConfirmations,
       confirmations,
-      fromAddress: best.from || '',
+      tx_hash: best.transaction_id || best.hash || '',
+      from_address: best.from || '',
+      to_address: address,
+      value: bestValue.toString(),
+      block_number: txBlock,
+      error_code: '',
+      error_message: '',
     };
-  } catch (e) {
-    return notFound;
+  } catch (e: any) {
+    return err('RPC_ERROR', e?.message || String(e));
   }
 }
 
 async function getLatestBlockHeight(rpcUrl: string): Promise<number | null> {
-  const endpoints = [
-    `${rpcUrl}/wallet/getnowblock`,
-    `${rpcUrl}/v1/blocks/latest`,
-  ];
+  const endpoints = [`${rpcUrl}/wallet/getnowblock`, `${rpcUrl}/v1/blocks/latest`];
   for (const url of endpoints) {
     try {
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
-      if (!res.ok) continue;
-      const data: any = await res.json();
+      const data: any = await fetchJsonWithRetry(url, 1);
       const num = data?.block_header?.raw_data?.number ?? data?.block?.block_header?.raw_data?.number ?? data?.number;
       if (typeof num === 'number') return num;
     } catch {

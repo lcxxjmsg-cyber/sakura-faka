@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
 import { parseUsdt } from '@/lib/db';
+import { validateTronAddress } from '@/lib/tron';
 
 export const prerender = false;
 
@@ -42,6 +43,7 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   const orderId = String(body.order_id || '').trim();
   const address = String(body.refund_address || '').trim();
   if (!orderId || !address) return apiErr('缺少订单号或退款地址');
+  if (!validateTronAddress(address)) return apiErr('退款地址无效（必须是有效的 TRON 地址）');
   let amount: string;
   try { amount = parseUsdt(String(body.amount || '0')); } catch { return apiErr('退款金额格式错误'); }
   const res = await env.DB.prepare(`INSERT INTO refunds (order_id, amount, refund_address, tx_hash, status, note) VALUES (?, ?, ?, ?, ?, ?)`)

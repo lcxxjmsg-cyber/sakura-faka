@@ -24,6 +24,17 @@ export type Card = {
   created_at: string;
 };
 
+export type OrderStatus =
+  | 'pending'
+  | 'payment_detected'
+  | 'paid'
+  | 'fulfilling'
+  | 'shipped'
+  | 'closed'
+  | 'refund_pending'
+  | 'refunded'
+  | 'manual_review';
+
 export type Order = {
   id: string;
   product_id: number;
@@ -32,7 +43,7 @@ export type Order = {
   total_price: string; // USDT 最小单位
   address: string;     // 每订单唯一子地址
   address_index?: number;
-  status: 'pending' | 'paid' | 'closed' | 'shipped';
+  status: OrderStatus;
   tx_hash: string;
   tx_confirm: number;
   contact_email: string;
@@ -56,6 +67,7 @@ export type StoreEnv = {
   POLL_INTERVAL: string;
   TRON_RPC_URL: string;
   CRON_SECRET: string;
+  WALLET_ENCRYPTION_KEY?: string;
   AUTO_SWEEP_ENABLED?: string;
   SWEEP_FEE_LIMIT?: string;
   SWEEP_MIN_AMOUNT?: string;
