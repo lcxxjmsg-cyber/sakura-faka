@@ -66,6 +66,7 @@ export type StoreEnv = {
   TRON_CONFIRMATIONS: string;
   POLL_INTERVAL: string;
   TRON_RPC_URL: string;
+  TRON_PRO_API_KEY?: string;
   CRON_SECRET: string;
   WALLET_ENCRYPTION_KEY?: string;
   AUTO_SWEEP_ENABLED?: string;

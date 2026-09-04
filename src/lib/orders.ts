@@ -1,9 +1,11 @@
 import type { StoreEnv, Order } from '@/types';
 import { getProduct, getOrder, getOrderCards, linkOrderCards, randId } from '@/lib/db';
-import { deriveTronAddress, checkUsdtPayment } from '@/lib/tron';
+import { deriveTronAddress } from '@/lib/tron';
 import { sendDeliveryEmail } from '@/lib/mail';
 import { getWalletMnemonic, getMasterAddress } from '@/lib/wallet';
 import { transitionOrder } from '@/domain/order/order.state';
+import { getTronProvider } from '@/domain/payment/tron.provider';
+import { checkOrderPaymentOnChain } from '@/domain/payment/payment.service';
 const ORDER_TTL_SECONDS = 30 * 60; // 30分钟未支付关闭
 
 // ============================================================
@@ -148,7 +150,8 @@ export async function checkOrderPayment(env: StoreEnv, orderId: string, viewToke
       return { ok: true, status: 'closed', error: '订单已过期' };
     }
 
-    const check = await checkUsdtPayment(env.TRON_RPC_URL, order.address, order.total_price, Number(env.TRON_CONFIRMATIONS || '1'), order.created_at);
+    const provider = getTronProvider(env.TRON_RPC_URL, env.TRON_PRO_API_KEY);
+    const check = await checkOrderPaymentOnChain(provider, order.address, order.total_price, Number(env.TRON_CONFIRMATIONS || '1'), order.created_at);
     // RPC 出错：不改变订单状态，返回错误（绝不能当未付款）
     if (!check.provider_ok) {
       return { ok: false, status: order.status, confirmations: order.tx_confirm, error: '支付网络暂不可用，请稍后重试', retry: true };

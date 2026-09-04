@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
-import { trySweep, type SweepTask, type SweepResult } from '@/lib/tron-sweep';
+import { trySweep, claimSweep, type SweepTask, type SweepResult } from '@/lib/tron-sweep';
 import { isAutoSweepEnabled } from '@/lib/config';
 
 export const prerender = false;
@@ -28,24 +28,27 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   const action = String(body.action || 'update');
   if (action === 'sweep' || action === 'dry_run') {
     const dryRun = action === 'dry_run';
-    if (!dryRun && !(await isAutoSweepEnabled(env))) return apiErr('自动归集未启用，请先到「系统设置」开启后重试');
+    if (!dryRun) {
+      if (!(await isAutoSweepEnabled(env))) return apiErr('自动归集未启用，请先到「系统设置」开启后重试');
+      // 原子领取执行权，防与 cron 并发广播同一任务
+      if (!(await claimSweep(env.DB, id))) return apiErr('任务正在被处理，或当前状态不可执行，请稍后重试');
+    }
     const res: SweepResult = await trySweep(env, task, dryRun);
     const now = new Date().toISOString();
 
-    if (dryRun || res.status === 'pending') {
-      // 干跑仅记录信息，不改状态
-      await env.DB.prepare(`UPDATE sweep_tasks SET note=?, updated_at=? WHERE id=?`).bind(res.note || '', now, id).run();
+    if (dryRun || res.status === 'pending' || res.status === 'processing') {
+      await env.DB.prepare(`UPDATE sweep_tasks SET note=?, lease_until=NULL, updated_at=? WHERE id=?`).bind(res.note || '', now, id).run();
     } else if (res.status === 'broadcasting') {
-      await env.DB.prepare(`UPDATE sweep_tasks SET status='broadcasting', tx_hash=?, broadcast_at=?, last_error='', note=?, updated_at=? WHERE id=?`)
+      await env.DB.prepare(`UPDATE sweep_tasks SET status='broadcasting', tx_hash=?, broadcast_at=?, lease_until=NULL, last_error='', note=?, updated_at=? WHERE id=?`)
         .bind(res.txID || '', now, res.note || '', now, id).run();
     } else if (res.status === 'completed') {
-      await env.DB.prepare(`UPDATE sweep_tasks SET status='completed', tx_hash=?, confirmed_at=?, note=?, updated_at=? WHERE id=?`)
+      await env.DB.prepare(`UPDATE sweep_tasks SET status='completed', tx_hash=?, confirmed_at=?, lease_until=NULL, note=?, updated_at=? WHERE id=?`)
         .bind(res.txID || '', now, res.note || '', now, id).run();
     } else if (res.status === 'failed_permanent') {
-      await env.DB.prepare(`UPDATE sweep_tasks SET status='failed_permanent', last_error=?, note=?, updated_at=? WHERE id=?`)
+      await env.DB.prepare(`UPDATE sweep_tasks SET status='failed_permanent', lease_until=NULL, last_error=?, note=?, updated_at=? WHERE id=?`)
         .bind(res.note || '', res.note || '', now, id).run();
     } else {
-      await env.DB.prepare(`UPDATE sweep_tasks SET status=?, last_error=?, retry_count=retry_count+1, next_retry_at=?, note=?, updated_at=? WHERE id=?`)
+      await env.DB.prepare(`UPDATE sweep_tasks SET status=?, lease_until=NULL, last_error=?, retry_count=retry_count+1, next_retry_at=?, note=?, updated_at=? WHERE id=?`)
         .bind(res.status, res.note || '', new Date(Date.now() + 60000).toISOString(), res.note || '', now, id).run();
     }
     await logAdminAction(env, `归集任务 #${id} ${dryRun ? '干跑' : '执行'} => ${res.status || res.note}`);

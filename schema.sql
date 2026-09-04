@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS sweep_tasks (
   last_error     TEXT DEFAULT '',
   broadcast_at   TEXT NULL,
   confirmed_at   TEXT NULL,
+  lease_until    TEXT NULL,
   note           TEXT DEFAULT '',
   created_at     TEXT DEFAULT (datetime('now')),
   updated_at     TEXT DEFAULT (datetime('now'))
