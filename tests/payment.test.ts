@@ -57,4 +57,45 @@ describe('checkOrderPaymentOnChain', () => {
     const r = await checkOrderPaymentOnChain(provider, 'Tto', '1000000', 19, '2020-01-01');
     expect(r.found).toBe(false);
   });
+
+  it('P1-5: multiple partial payments add up to exact requirement', async () => {
+    const provider = mockProvider({
+      findIncomingTransfers: async () => [
+        { ...tx, tx_hash: 'a', value: '4000000' },
+        { ...tx, tx_hash: 'b', value: '6000000' },
+      ],
+      getSolidReceipt: async (_) => okReceipt,
+    });
+    const r = await checkOrderPaymentOnChain(provider, 'Tto', '10000000', 19, '2020-01-01');
+    expect(r.found).toBe(true);
+    expect(r.received).toBe('10000000');
+    expect(r.overpaid).toBe('0');
+    expect(r.txs.length).toBe(2);
+  });
+
+  it('P1-5: overpayment records overpaid and received', async () => {
+    const provider = mockProvider({
+      findIncomingTransfers: async () => [
+        { ...tx, tx_hash: 'a', value: '4000000' },
+        { ...tx, tx_hash: 'b', value: '6000000' },
+        { ...tx, tx_hash: 'c', value: '4000000' },
+      ],
+      getSolidReceipt: async (_) => okReceipt,
+    });
+    const r = await checkOrderPaymentOnChain(provider, 'Tto', '10000000', 19, '2020-01-01');
+    expect(r.found).toBe(true);
+    expect(r.received).toBe('14000000');
+    expect(r.overpaid).toBe('4000000');
+  });
+
+  it('P1-5: partial (insufficient) multi-tx stays unpaid but records received', async () => {
+    const provider = mockProvider({
+      findIncomingTransfers: async () => [{ ...tx, tx_hash: 'a', value: '4000000' }],
+      getSolidReceipt: async (_) => okReceipt,
+    });
+    const r = await checkOrderPaymentOnChain(provider, 'Tto', '10000000', 19, '2020-01-01');
+    expect(r.found).toBe(false);
+    expect(r.received).toBe('4000000');
+    expect(r.txs.length).toBe(1);
+  });
 });

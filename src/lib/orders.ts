@@ -65,8 +65,8 @@ export async function createOrder(
 
   await db
     .prepare(
-      `INSERT INTO orders (id, product_id, product_title, qty, total_price, address, address_index, status, contact_email, view_token, created_at, expired_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+      `INSERT INTO orders (id, product_id, product_title, qty, total_price, address, address_index, status, contact_email, view_token, expected_amount, created_at, expired_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
     )
     .bind(
       orderId,
@@ -78,6 +78,7 @@ export async function createOrder(
       index,
       contactEmail,
       viewToken,
+      totalPrice,
       now.toISOString(),
       expiredAt.toISOString(),
     )
@@ -98,6 +99,16 @@ async function recordPaymentEvent(db: D1Database, orderId: string, event: { tx_h
     await db.prepare('INSERT INTO payment_events (order_id, tx_hash, event_type, confirmations, amount, metadata) VALUES (?,?,?,?,?,?)')
       .bind(orderId, event.tx_hash || '', event.event_type, event.confirmations ?? 0, event.amount || '0', event.metadata || '').run();
   } catch { /* 审计失败不阻塞主流程 */ }
+}
+
+async function recordTxList(db: D1Database, order: Order, txs: { tx_hash: string; from: string; value: string; confirmations: number }[], status: string, now: string): Promise<void> {
+  for (const t of txs) {
+    await db.prepare(
+      `INSERT INTO payment_transactions (tx_hash, order_id, from_address, to_address, amount, confirmations, status, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(tx_hash) DO UPDATE SET confirmations=excluded.confirmations, status=excluded.status, updated_at=excluded.updated_at`,
+    ).bind(t.tx_hash, order.id, t.from || '', order.address, t.value, t.confirmations, status, now).run();
+  }
 }
 
 // ============================================================
@@ -156,33 +167,37 @@ export async function checkOrderPayment(env: StoreEnv, orderId: string, viewToke
     if (!check.provider_ok) {
       return { ok: false, status: order.status, confirmations: order.tx_confirm, error: '支付网络暂不可用，请稍后重试', retry: true };
     }
+
+    const now = new Date().toISOString();
+
+    // 未足额（含多笔但合计不足）：仅记录实收与流水，保持 pending
     if (!check.found) {
-      return { ok: true, status: 'pending', confirmations: 0 };
+      if (check.txs.length) {
+        await recordTxList(db, order, check.txs, 'detected', now);
+        await db.prepare('UPDATE orders SET received_amount=? WHERE id=?').bind(check.received, order.id).run();
+      }
+      return { ok: true, status: 'pending', confirmations: check.confirmations };
     }
 
-    // 记录支付流水 + 事件
-    await db.prepare(`
-      INSERT INTO payment_transactions (tx_hash, order_id, from_address, to_address, amount, confirmations, status, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(tx_hash) DO UPDATE SET confirmations=excluded.confirmations, status=excluded.status, updated_at=excluded.updated_at
-    `).bind(check.tx_hash, order.id, check.from_address, order.address, check.value, check.confirmations, check.confirmed ? 'confirmed' : 'detected', new Date().toISOString()).run();
-
+    // 足额但确认数不足
     if (!check.confirmed) {
-      // pending -> payment_detected；并立即清除过期时间，避免"已到账却因未支付超时被关闭"
-      await transitionOrder(db, order.id, 'pending', 'payment_detected', 'payment_detected', JSON.stringify({ tx: check.tx_hash, confirmations: check.confirmations }));
-      await db.prepare('UPDATE orders SET tx_hash=?, tx_confirm=?, expired_at=NULL WHERE id=? AND status IN (?,?)').bind(check.tx_hash, check.confirmations, order.id, 'pending', 'payment_detected').run();
-      await recordPaymentEvent(db, order.id, { tx_hash: check.tx_hash, event_type: 'detected', confirmations: check.confirmations, amount: check.value });
+      await recordTxList(db, order, check.txs, 'detected', now);
+      await transitionOrder(db, order.id, 'pending', 'payment_detected', 'payment_detected', JSON.stringify({ tx: check.tx_hash, confirmations: check.confirmations, received: check.received }));
+      await db.prepare('UPDATE orders SET tx_hash=?, tx_confirm=?, received_amount=?, overpaid_amount=?, expired_at=NULL WHERE id=? AND status IN (?,?)').bind(check.tx_hash, check.confirmations, check.received, check.overpaid, order.id, 'pending', 'payment_detected').run();
+      await recordPaymentEvent(db, order.id, { tx_hash: check.tx_hash, event_type: 'detected', confirmations: check.confirmations, amount: check.received });
       return { ok: true, status: 'payment_detected', confirmations: check.confirmations };
     }
 
-    // 已确认：原子地推进到 paid（订单状态 + 支付流水 + 审计一次提交，防止"状态/确认数不同步"）
-    const now = new Date().toISOString();
-    const confirmBatch = await db.batch([
-      db.prepare(`UPDATE orders SET status='paid', tx_hash=?, tx_confirm=?, paid_at=? WHERE id=? AND status IN ('pending','payment_detected')`).bind(check.tx_hash, check.confirmations, now, order.id),
-      db.prepare(`INSERT INTO payment_transactions (tx_hash,order_id,from_address,to_address,amount,confirmations,status,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(tx_hash) DO UPDATE SET confirmations=excluded.confirmations,status=excluded.status,updated_at=excluded.updated_at`).bind(check.tx_hash, order.id, check.from_address, order.address, check.value, check.confirmations, 'confirmed', now),
-      db.prepare(`INSERT INTO payment_events (order_id,tx_hash,event_type,confirmations,amount) VALUES (?,?,?,?,?)`).bind(order.id, check.tx_hash, 'confirmed', check.confirmations, check.value),
-      db.prepare(`INSERT INTO order_events (order_id,event_type,from_status,to_status,metadata) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND status=?)`).bind(order.id, 'payment_confirmed', 'pending', 'paid', JSON.stringify({ tx: check.tx_hash, confirmations: check.confirmations }), order.id, 'paid'),
-    ]);
+    // 已确认：原子地推进到 paid（状态 + 金额字段 + 逐笔流水 + 审计一次提交）
+    const stmts: any[] = [
+      db.prepare(`UPDATE orders SET status='paid', tx_hash=?, tx_confirm=?, received_amount=?, overpaid_amount=?, paid_at=? WHERE id=? AND status IN ('pending','payment_detected')`).bind(check.tx_hash, check.confirmations, check.received, check.overpaid, now, order.id),
+    ];
+    for (const t of check.txs) {
+      stmts.push(db.prepare(`INSERT INTO payment_transactions (tx_hash,order_id,from_address,to_address,amount,confirmations,status,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(tx_hash) DO UPDATE SET confirmations=excluded.confirmations,status=excluded.status,updated_at=excluded.updated_at`).bind(t.tx_hash, order.id, t.from || '', order.address, t.value, t.confirmations, 'confirmed', now));
+    }
+    stmts.push(db.prepare(`INSERT INTO payment_events (order_id,tx_hash,event_type,confirmations,amount) VALUES (?,?,?,?,?)`).bind(order.id, check.tx_hash, 'confirmed', check.confirmations, check.received));
+    stmts.push(db.prepare(`INSERT INTO order_events (order_id,event_type,from_status,to_status,metadata) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND status=?)`).bind(order.id, 'payment_confirmed', 'pending', 'paid', JSON.stringify({ tx: check.tx_hash, confirmations: check.confirmations, received: check.received, overpaid: check.overpaid }), order.id, 'paid'));
+    const confirmBatch = await db.batch(stmts);
     if ((confirmBatch[0]?.meta?.changes ?? 0) !== 1) {
       const fresh = await getOrder(db, order.id);
       return { ok: true, status: fresh?.status || 'paid', confirmations: check.confirmations };

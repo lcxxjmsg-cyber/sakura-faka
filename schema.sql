@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS orders (
   contact_email TEXT DEFAULT '',            -- 可选买家邮箱
   view_token    TEXT DEFAULT '',            -- 查看卡密的私密token(仅下单时返回买家)
   card_ids    TEXT DEFAULT '',              -- 关联卡密id列表(逗号分隔)
+  expected_amount TEXT DEFAULT '',          -- 应付金额(最小单位)
+  received_amount TEXT DEFAULT '',          -- 已收到金额(最小单位，含多笔)
+  overpaid_amount TEXT DEFAULT '',          -- 多付金额(最小单位)
   created_at  TEXT DEFAULT (datetime('now')),
   paid_at     TEXT NULL,
   expired_at  TEXT NULL,
