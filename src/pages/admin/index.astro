@@ -21,6 +21,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       <button class="tab-btn" data-tab="dashboard">仪表盘</button>
       <p class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide" style="color: var(--muted)">商品 / 订单</p>
       <button class="tab-btn active" data-tab="products">商品管理</button>
+      <button class="tab-btn" data-tab="cards">卡密库存</button>
       <button class="tab-btn" data-tab="orders">订单管理</button>
       <button class="tab-btn" data-tab="refunds">退款</button>
       <p class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide" style="color: var(--muted)">支付 / 资金</p>
@@ -80,6 +81,20 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       <button onclick="openNew()" class="btn-sakura !py-2.5 !px-5 text-sm">＋ 新增商品</button>
     </div>
     <div id="product-list" class="space-y-3">加载中…</div>
+  </section>
+
+  <!-- 卡密库存 -->
+  <section id="tab-cards" class="tab-panel hidden">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold text-slate-700">卡密库存</h2>
+      <button onclick="loadCards()" class="btn-ghost !py-1.5 !px-3 text-xs">刷新</button>
+    </div>
+    <div class="card px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
+      <input id="cards-q" class="input flex-1 min-w-[160px] !py-2" placeholder="搜索卡密…" />
+      <select id="cards-product" class="input !w-44 !py-2"><option value="">全部商品</option></select>
+      <select id="cards-status" class="input !w-32 !py-2"><option value="">全部状态</option><option value="0">未售</option><option value="1">已售</option></select>
+    </div>
+    <div id="cards-list" class="space-y-2">加载中…</div>
   </section>
 
   <!-- 订单管理 -->
@@ -210,12 +225,28 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
         </select>
       </div>
       <div>
-        <label class="text-sm text-slate-500">封面图 URL</label>
-        <input id="e-cover" class="input mt-1" placeholder="https://…（留空用默认樱花图）" />
+        <label class="text-sm text-slate-500">商品封面</label>
+        <div class="mt-1 flex items-center gap-3">
+          <img id="e-cover-preview" class="w-16 h-16 rounded-lg object-cover border hidden" style="border-color: var(--border)" />
+          <button onclick="uploadCover()" class="btn-ghost !py-2 !px-4 text-sm">上传图片</button>
+          <input id="e-cover" type="hidden" />
+          <input id="e-cover-file" type="file" accept="image/*" class="hidden" />
+          <span id="e-cover-name" class="text-xs text-muted"></span>
+        </div>
       </div>
       <div>
-        <label class="text-sm text-slate-500">商品说明</label>
-        <textarea id="e-desc" rows="3" class="input mt-1" placeholder="商品描述（支持HTML）"></textarea>
+        <label class="text-sm text-slate-500">商品说明（富文本，可加粗/标题/列表/插图）</label>
+        <div id="e-desc-toolbar" class="flex flex-wrap gap-1 mt-1 mb-1">
+          <button type="button" onclick="rtCmd('bold')" class="btn-ghost !px-2 !py-1 text-xs">加粗</button>
+          <button type="button" onclick="rtCmd('italic')" class="btn-ghost !px-2 !py-1 text-xs">斜体</button>
+          <button type="button" onclick="rtCmd('formatBlock','h2')" class="btn-ghost !px-2 !py-1 text-xs">标题</button>
+          <button type="button" onclick="rtCmd('formatBlock','p')" class="btn-ghost !px-2 !py-1 text-xs">正文</button>
+          <button type="button" onclick="rtCmd('insertUnorderedList')" class="btn-ghost !px-2 !py-1 text-xs">列表</button>
+          <button type="button" onclick="rtCmd('formatBlock','blockquote')" class="btn-ghost !px-2 !py-1 text-xs">引用</button>
+          <button type="button" onclick="rtImage()" class="btn-ghost !px-2 !py-1 text-xs">插图</button>
+          <input id="e-desc-file" type="file" accept="image/*" class="hidden" />
+        </div>
+        <div id="e-desc" class="input mt-1 min-h-[140px] prose" contenteditable="true" style="white-space: pre-wrap"></div>
       </div>
       <div class="flex items-center gap-4">
         <label class="flex items-center gap-2 text-sm text-slate-600">
@@ -359,6 +390,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   async function load(tab: string) {
     if (tab === 'dashboard') return loadDashboard();
     if (tab === 'wallet') return loadWallet();
+    if (tab === 'cards') return loadCards();
     if (tab === 'products') return loadProducts();
     if (tab === 'orders') return loadOrders();
     if (tab === 'stats') return loadStats();
@@ -394,10 +426,11 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   async function loadSweeps() {
     const el = document.querySelector('#sweep-list') as HTMLElement;
     const hint = document.querySelector('#sweep-hint') as HTMLElement;
-    const autoOn = document.querySelector('#sweep-mode')?.getAttribute('data-auto-sweep') === '1';
+    let autoOn = false;
+    try { const s = await request('/api/admin/settings'); autoOn = !!s.data.auto_sweep_enabled; } catch {}
     hint.textContent = autoOn
       ? '自动归集已开启：子地址收款后将自动转账到主钱包。源地址需预存少量 TRX 供能量费。'
-      : '自动归集未开启。可先用“干跑校验”验证交易构造，再设置 AUTO_SWEEP_ENABLED=true 启用。';
+      : '自动归集未开启。可在「系统设置 → 功能开关」开启，或用“干跑校验”验证交易构造。';
     try {
       const data = await request('/api/admin/sweeps');
       const list = data.data || [];
@@ -665,6 +698,43 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     } catch (e: any) { alert(e.message); }
   }
 
+  // ============ 卡密库存 ============
+  async function loadCards() {
+    await fillCardProducts();
+    const list = document.querySelector('#cards-list') as HTMLElement;
+    try {
+      const q = (document.querySelector('#cards-q') as any).value.trim();
+      const productId = (document.querySelector('#cards-product') as any).value;
+      const status = (document.querySelector('#cards-status') as any).value;
+      const url = `/api/admin/cards?limit=300&q=${encodeURIComponent(q)}&product_id=${productId}&status=${status}`;
+      const data = await request(url);
+      const rows = data.data || [];
+      list.innerHTML = rows.length ? rows.map((c: any) => `<div class="card px-4 py-2.5 flex flex-wrap items-center gap-3">
+        <code class="text-xs text-slate-400">#${c.id}</code>
+        <span class="badge ${c.status === 1 ? 'badge-success' : 'badge'}">${c.status === 1 ? '已售' : '未售'}</span>
+        <span class="text-sm text-slate-500">${esc(c.product_title || '')}</span>
+        <code class="text-sm font-mono break-all flex-1">${esc(c.card)}</code>
+        <span class="text-xs text-muted">${c.status === 1 ? '订单 ' + esc(String(c.order_id || '').slice(0, 10)) : '—'}</span>
+        ${c.status === 0 ? `<button onclick="deleteCard(${c.id})" class="btn-ghost !py-1 !px-3 text-xs !text-rose-500">删除</button>` : ''}
+      </div>`).join('') : '<div class="text-center text-slate-400 py-12">暂无卡密</div>';
+    } catch (e: any) { list.innerHTML = '<div class="text-rose-500">加载失败</div>'; }
+  }
+
+  async function deleteCard(id: number) {
+    if (!confirm('确认删除该卡密？')) return;
+    try { await request('/api/admin/cards', { method: 'POST', body: JSON.stringify({ id }) }); loadCards(); }
+    catch (e: any) { alert(e.message); }
+  }
+
+  async function fillCardProducts() {
+    const sel = document.querySelector('#cards-product') as HTMLSelectElement;
+    if (!sel || sel.options.length > 1) return;
+    try {
+      const d = await request('/api/admin/products');
+      (d.data || []).forEach((p: any) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.title; sel.appendChild(o); });
+    } catch { /* 忽略 */ }
+  }
+
   // ============ 仪表盘 ============
   async function loadDashboard() {
     const kpis = document.querySelector('#dash-kpis') as HTMLElement;
@@ -830,10 +900,41 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     (document.querySelector('#e-price') as any).value = '';
     (document.querySelector('#e-category') as any).value = '';
     (document.querySelector('#e-delivery-type') as any).value = 'text';
-    (document.querySelector('#e-cover') as any).value = '';
-    (document.querySelector('#e-desc') as any).value = '';
+    setCover('', '');
+    (document.querySelector('#e-desc') as any).innerHTML = '';
     (document.querySelector('#e-status') as any).checked = true;
     (document.querySelector('#modal') as any).classList.remove('hidden');
+  }
+
+  function setCover(url: string, name = '') {
+    (document.querySelector('#e-cover') as any).value = url || '';
+    const prev = document.querySelector('#e-cover-preview') as HTMLImageElement;
+    if (url) { prev.src = url; prev.classList.remove('hidden'); }
+    else { prev.classList.add('hidden'); prev.removeAttribute('src'); }
+    (document.querySelector('#e-cover-name') as any).textContent = name || (url ? '已设置封面' : '未设置');
+  }
+
+  async function uploadCover() {
+    (document.querySelector('#e-cover-file') as HTMLInputElement).click();
+  }
+
+  async function rtCmd(cmd: string, val?: string) {
+    const editor = document.querySelector('#e-desc') as HTMLElement;
+    editor.focus();
+    document.execCommand(cmd, false, val);
+  }
+
+  async function uploadImageFile(file: File): Promise<string> {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '上传失败');
+    return data.data.url as string;
+  }
+
+  async function rtImage() {
+    (document.querySelector('#e-desc-file') as HTMLInputElement).click();
   }
 
   function openEdit(id: number) {
@@ -850,8 +951,8 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
           (document.querySelector('#e-price') as any).value = (Number(p.price)/1e6).toFixed(2);
           (document.querySelector('#e-category') as any).value = p.category;
           (document.querySelector('#e-delivery-type') as any).value = p.delivery_type || 'text';
-          (document.querySelector('#e-cover') as any).value = p.cover;
-          (document.querySelector('#e-desc') as any).value = p.description;
+          setCover(p.cover, p.cover ? '已设置封面' : '');
+          (document.querySelector('#e-desc') as any).innerHTML = p.description || '';
           (document.querySelector('#e-status') as any).checked = p.status === 1;
           (document.querySelector('#modal') as any).classList.remove('hidden');
         } catch (e: any) {
@@ -874,7 +975,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       category: (document.querySelector('#e-category') as any).value,
       delivery_type: (document.querySelector('#e-delivery-type') as any).value,
       cover: (document.querySelector('#e-cover') as any).value,
-      description: (document.querySelector('#e-desc') as any).value,
+      description: (document.querySelector('#e-desc') as any).innerHTML,
       status: (document.querySelector('#e-status') as any).checked ? 1 : 0,
     };
     try {
@@ -955,6 +1056,21 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   (window as any).loadSweeps = loadSweeps;
   (window as any).completeSweep = completeSweep;
   (window as any).runSweep = runSweep;
+  (window as any).uploadCover = uploadCover;
+  (window as any).rtCmd = rtCmd;
+  (window as any).rtImage = rtImage;
+  (document.querySelector('#e-cover-file') as HTMLInputElement)?.addEventListener('change', async (e: any) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    try { const url = await uploadImageFile(f); setCover(url, f.name); } catch (err: any) { alert(err.message); }
+  });
+  (document.querySelector('#e-desc-file') as HTMLInputElement)?.addEventListener('change', async (e: any) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    try { const url = await uploadImageFile(f); const editor = document.querySelector('#e-desc') as HTMLElement; editor.focus(); document.execCommand('insertImage', false, url); }
+    catch (err: any) { alert(err.message); }
+  });
+  (document.querySelector('#cards-q') as HTMLInputElement)?.addEventListener('input', () => loadCards());
+  (document.querySelector('#cards-product') as HTMLSelectElement)?.addEventListener('change', () => loadCards());
+  (document.querySelector('#cards-status') as HTMLSelectElement)?.addEventListener('change', () => loadCards());
   (window as any).loadRefunds = loadRefunds;
   (window as any).openRefund = openRefund;
   (window as any).closeRefund = closeRefund;
@@ -963,6 +1079,8 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   (window as any).loadLogs = loadLogs;
   (window as any).runSystemCheck = runSystemCheck;
   (window as any).loadDashboard = loadDashboard;
+  (window as any).loadCards = loadCards;
+  (window as any).deleteCard = deleteCard;
   (window as any).openOrderDetail = openOrderDetail;
   (window as any).closeOrderDetail = closeOrderDetail;
   (window as any).loadWallet = loadWallet;
