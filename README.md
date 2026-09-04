@@ -66,7 +66,7 @@ npx wrangler pages dev dist --local --port 8790
 npx wrangler d1 execute faka-db --remote --file=schema.sql
 ```
 
-> ⚠️ **已在运行的老库**：请按迁移先后顺序执行 `migration-v2.sql` → `v3` → `v4` → `v5` → `v6` → `v7` → `v8`（v7 为自动归集补充字段，v8 为系统内置收款钱包）。
+> ⚠️ **已在运行的老库**：请按迁移先后顺序执行 `migration-v2.sql` → `v3` → `v4` → `v5` → `v6` → `v7` → `v8` → `v9` → `v10` → `v11`（v7 归集字段、v8 内置钱包、v9 审计表、v10 钱包加密列、v11 归集重试列 + order_cards）。
 
 ### 3. 配置绑定
 
@@ -85,8 +85,9 @@ npx wrangler d1 execute faka-db --remote --file=schema.sql
 |------|------|------|
 | `SITE_NAME` | var | 站点名，如 `樱花市集` |
 | `SITE_WELCOME` | var | 首页欢迎语 |
-| `ADMIN_PASSWORD` | **secret** | 后台登录密码（务必修改默认值） |
-| `TRON_MNEMONIC` | **secret（可选）** | 外部助记词（仅当你想自管钱包时填；**推荐用后台「收款钱包」一键生成**，系统自动保存） |
+| `ADMIN_PASSWORD` | **secret** | 后台登录密码（可用默认 `faka8888` 登录后在后改，务必尽快修改） |
+| `WALLET_ENCRYPTION_KEY` | **secret（必须）** | 加密助记词的 AES-256-GCM 密钥（随机强值；帮助记词安全存库） |
+| `TRON_MNEMONIC` | **secret（可选）** | 外部助记词（仅当你想自管钱包时填；**推荐用后台「收款钱包」一键生成**，系统加密保存） |
 | `TRON_MASTER_ADDRESS` | **secret（可选）** | 外部主钱包地址（仅当你想把资金归集到自己冷钱包时填；否则用系统内置主钱包） |
 | `TRON_RPC_URL` | var | TRON 节点，默认 `https://api.trongrid.io` |
 | `TRON_CONFIRMATIONS` | var | 到账确认数阈值，默认 19 |
@@ -117,6 +118,12 @@ npx wrangler pages deploy dist --project-name <你的项目名>
 
 上线处理真实资金前，建议：**先跑一遍不涉及真实资金的全流程，再决定是否开启自动归集**。
 
+### 自动化单元测试（本地）
+```bash
+npm test     # vitest：地址校验、钱包加解密、密码哈希、订单状态机、数量/价格校验
+```
+涵盖：TRON 地址校验、AES-GCM 加解密、密码哈希、订单状态机合法/非法迁移、数量与价格精度校验。
+
 ### 零、本地自动冒烟测试（不涉及真实资金）
 
 本地跑一遍"下单 → 模拟到账 → 自动发货 → 建归集任务 → 干跑"链路：
@@ -139,11 +146,16 @@ node scripts/smoke.mjs            # 运行自动冒烟测试
 
 ### 三、真实资金测试（需要你提供地址）
 仅当上面两步通过、且你提供带少量资金的地址时才执行：
-- 后台「系统自检」确认 RPC 与合约地址正常；
-- 「资金归集」对某任务点「执行归集」前，先把 `AUTO_SWEEP_ENABLED` 设为 `true`；
-- 建议先转一笔很小的金额（如 0.01 USDT）验证到账确认 + 自动发货 + 归集，全部成功后再开启正式收款。
+1. 后台「系统自检」确认 RPC 与合约地址全绿。
+2. **收款钱包 → 一键生成**并备份助记词；记下系统主钱包地址（归集目标）。
+3. 给「收款子地址 + 主钱包」预存足够 TRX（约 0.1–1 TRX 即可，用于能量费）。
+4. 前台下单，得到该单**独立收款地址**。
+5. 向你自己的一个有钱地址，向该**订单收款地址**转账 **0.01 USDT (TRC-20)**。
+6. 后台「资金归集 → 干跑校验」应先能构建+签名成功；确认无误后设 `AUTO_SWEEP_ENABLED=true` 再点「执行归集」。
+7. 观察：订单状态 pending → payment_detected → paid → shipped；归集任务 pending → broadcasting → completed 且主钱包收到 USDT。
+8. 全部成功后再开设正式收款；否则用「操作日志 / order_events」排查。
 
-> 系统内置的「模拟到账」只生成占位交易哈希，不会真的从链上扣款，请勿用于正式账单。
+> 系统内置「模拟到账」只生成占位哈希，不涉及真实扣款，仅用于链路测试。
 
 ## 自动归集使用指引
 
