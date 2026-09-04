@@ -87,15 +87,52 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   <section id="tab-cards" class="tab-panel hidden">
     <div class="flex items-center justify-between mb-4">
       <h2 class="font-semibold text-slate-700">卡密库存</h2>
-      <button onclick="loadCards()" class="btn-ghost !py-1.5 !px-3 text-xs">刷新</button>
+      <div class="flex gap-2">
+        <button onclick="openCardCreate()" class="btn-primary !py-2 !px-4 text-sm">＋ 创建卡密</button>
+        <button onclick="openCardImport()" class="btn-ghost !py-2 !px-4 text-sm">批量导入</button>
+        <button onclick="loadCards()" class="btn-ghost !py-2 !px-4 text-sm">刷新</button>
+      </div>
     </div>
     <div class="card px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
       <input id="cards-q" class="input flex-1 min-w-[160px] !py-2" placeholder="搜索卡密…" />
-      <select id="cards-product" class="input !w-44 !py-2"><option value="">全部商品</option></select>
-      <select id="cards-status" class="input !w-32 !py-2"><option value="">全部状态</option><option value="0">未售</option><option value="1">已售</option></select>
+      <select id="cards-product" class="input !w-40 !py-2"><option value="">全部</option><option value="0">未分配(库)</option></select>
+      <select id="cards-status" class="input !w-28 !py-2"><option value="">全部</option><option value="0">未售</option><option value="1">已售</option></select>
     </div>
     <div id="cards-list" class="space-y-2">加载中…</div>
   </section>
+
+  <!-- 创建卡密弹窗 -->
+  <div id="card-create-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/40" onclick="closeCardCreate()"></div>
+    <div class="relative card w-full max-w-md p-6">
+      <h3 class="text-lg font-bold mb-4">创建卡密</h3>
+      <div class="space-y-3">
+        <div><label class="text-sm text-muted">卡密内容</label><textarea id="cc-text" rows="3" class="input mt-1 font-mono"></textarea></div>
+        <div><label class="text-sm text-muted">所属商品</label><select id="cc-product" class="input mt-1"><option value="0">— 暂不分配（卡密库）—</option></select></div>
+      </div>
+      <div class="mt-5 flex gap-3">
+        <button onclick="createCard()" class="btn-primary flex-1">保存</button>
+        <button onclick="closeCardCreate()" class="btn-ghost">取消</button>
+      </div>
+      <p id="cc-msg" class="mt-2 text-sm text-emerald-600"></p>
+    </div>
+  </div>
+
+  <!-- 批量导入卡密弹窗 -->
+  <div id="card-import-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/40" onclick="closeCardImport()"></div>
+    <div class="relative card w-full max-w-md p-6">
+      <h3 class="text-lg font-bold mb-1">批量导入卡密</h3>
+      <p class="text-sm text-muted mb-3">每行一条（支持逗号/竖线/分号分隔，自动去重）</p>
+      <textarea id="ci-text" rows="10" class="input font-mono"></textarea>
+      <div><label class="text-sm text-muted">导入到</label><select id="ci-product" class="input mt-1"><option value="0">卡密库（暂不分配）</option></select></div>
+      <div class="mt-4 flex gap-3">
+        <button onclick="cardImport()" class="btn-primary flex-1">导入</button>
+        <button onclick="closeCardImport()" class="btn-ghost">取消</button>
+      </div>
+      <p id="ci-msg" class="mt-2 text-sm text-emerald-600"></p>
+    </div>
+  </div>
 
   <!-- 订单管理 -->
   <section id="tab-orders" class="tab-panel hidden">
@@ -235,24 +272,33 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
         </div>
       </div>
       <div>
-        <label class="text-sm text-slate-500">商品说明（富文本，可加粗/标题/列表/插图）</label>
-        <div id="e-desc-toolbar" class="flex flex-wrap gap-1 mt-1 mb-1">
-          <button type="button" onclick="rtCmd('bold')" class="btn-ghost !px-2 !py-1 text-xs">加粗</button>
-          <button type="button" onclick="rtCmd('italic')" class="btn-ghost !px-2 !py-1 text-xs">斜体</button>
-          <button type="button" onclick="rtCmd('formatBlock','h2')" class="btn-ghost !px-2 !py-1 text-xs">标题</button>
-          <button type="button" onclick="rtCmd('formatBlock','p')" class="btn-ghost !px-2 !py-1 text-xs">正文</button>
-          <button type="button" onclick="rtCmd('insertUnorderedList')" class="btn-ghost !px-2 !py-1 text-xs">列表</button>
-          <button type="button" onclick="rtCmd('formatBlock','blockquote')" class="btn-ghost !px-2 !py-1 text-xs">引用</button>
-          <button type="button" onclick="rtImage()" class="btn-ghost !px-2 !py-1 text-xs">插图</button>
+        <label class="text-sm text-slate-500">商品说明（富文本，点按钮即可看到效果）</label>
+        <div class="rt-bar mt-1 flex flex-wrap items-center gap-1 p-1.5 rounded-lg" style="background: var(--bg-subtle); border: 1px solid var(--border)">
+          <button type="button" class="rt-btn" data-cmd="bold" title="加粗"><b>B</b></button>
+          <button type="button" class="rt-btn" data-cmd="italic" title="斜体"><i>I</i></button>
+          <button type="button" class="rt-btn" data-cmd="underline" title="下划线"><u>U</u></button>
+          <button type="button" class="rt-btn" data-cmd="formatBlock" data-val="H2" title="标题">H2</button>
+          <button type="button" class="rt-btn" data-cmd="formatBlock" data-val="P" title="正文">¶</button>
+          <button type="button" class="rt-btn" data-cmd="insertUnorderedList" title="项目列表">• 列表</button>
+          <button type="button" class="rt-btn" data-cmd="insertOrderedList" title="编号列表">1. 列表</button>
+          <button type="button" class="rt-btn" data-cmd="formatBlock" data-val="BLOCKQUOTE" title="引用">❝ 引用</button>
+          <button type="button" class="rt-btn" data-cmd="formatBlock" data-val="PRE" title="代码">代码</button>
+          <button type="button" class="rt-btn" data-cmd="removeFormat" title="清除格式">清除格式</button>
+          <button type="button" class="rt-btn" data-cmd="undo" title="撤销">↶</button>
+          <button type="button" class="rt-btn" data-cmd="redo" title="重做">↷</button>
+          <button type="button" class="rt-btn" id="rt-link-btn" title="插入链接">🔗 链接</button>
+          <button type="button" class="rt-btn" id="rt-img-btn" title="插入图片">🖼 图片</button>
+          <button type="button" class="rt-btn" id="rt-preview-btn" title="预览/编辑">👁 预览</button>
           <input id="e-desc-file" type="file" accept="image/*" class="hidden" />
         </div>
-        <div id="e-desc" class="input mt-1 min-h-[140px] prose" contenteditable="true" style="white-space: pre-wrap"></div>
+        <div id="e-desc" class="input mt-1 min-h-[180px] prose" contenteditable="true" style="white-space: pre-wrap"></div>
       </div>
       <div class="flex items-center gap-4">
         <label class="flex items-center gap-2 text-sm text-slate-600">
           <input id="e-status" type="checkbox" checked /> 上架
         </label>
         <button onclick="openImport()" class="btn-ghost !py-2 !px-4 text-sm ml-auto">导入卡密</button>
+        <button onclick="openAssignModal()" class="btn-ghost !py-2 !px-4 text-sm">从卡密库选择</button>
       </div>
     </div>
     <div class="mt-6 flex gap-3">
@@ -318,6 +364,20 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       <button onclick="closeOrderDetail()" class="btn-ghost !px-3 !py-1.5 text-xs">关闭</button>
     </div>
     <div id="order-detail-body" class="p-5 space-y-4">加载中…</div>
+  </div>
+</div>
+
+<!-- 从卡密库选择分配弹窗 -->
+<div id="card-assign-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40" onclick="closeAssignModal()"></div>
+  <div class="relative card w-full max-w-md p-6">
+    <h3 class="text-lg font-bold mb-1">从卡密库分配到该商品</h3>
+    <p class="text-sm text-muted mb-3">勾选「未分配」的卡密加入当前商品（保存前先保存商品）</p>
+    <div id="as-list" class="max-h-[50vh] overflow-auto space-y-1">加载中…</div>
+    <div class="mt-4 flex gap-3">
+      <button onclick="doAssign()" class="btn-primary flex-1">分配</button>
+      <button onclick="closeAssignModal()" class="btn-ghost">取消</button>
+    </div>
   </div>
 </div>
 
@@ -699,6 +759,9 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   }
 
   // ============ 卡密库存 ============
+  let cardProducts: any[] = [];
+  const cardProductLabel = (c: any) => (Number(c.product_id) > 0 ? (c.product_title || ('商品#' + c.product_id)) : '未分配(库)');
+
   async function loadCards() {
     await fillCardProducts();
     const list = document.querySelector('#cards-list') as HTMLElement;
@@ -706,33 +769,124 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       const q = (document.querySelector('#cards-q') as any).value.trim();
       const productId = (document.querySelector('#cards-product') as any).value;
       const status = (document.querySelector('#cards-status') as any).value;
-      const url = `/api/admin/cards?limit=300&q=${encodeURIComponent(q)}&product_id=${productId}&status=${status}`;
+      const url = `/api/admin/cards?limit=300&q=${encodeURIComponent(q)}&status=${status}` + (productId !== '' ? `&product_id=${productId}` : '');
       const data = await request(url);
       const rows = data.data || [];
-      list.innerHTML = rows.length ? rows.map((c: any) => `<div class="card px-4 py-2.5 flex flex-wrap items-center gap-3">
-        <code class="text-xs text-slate-400">#${c.id}</code>
-        <span class="badge ${c.status === 1 ? 'badge-success' : 'badge'}">${c.status === 1 ? '已售' : '未售'}</span>
-        <span class="text-sm text-slate-500">${esc(c.product_title || '')}</span>
-        <code class="text-sm font-mono break-all flex-1">${esc(c.card)}</code>
-        <span class="text-xs text-muted">${c.status === 1 ? '订单 ' + esc(String(c.order_id || '').slice(0, 10)) : '—'}</span>
-        ${c.status === 0 ? `<button onclick="deleteCard(${c.id})" class="btn-ghost !py-1 !px-3 text-xs !text-rose-500">删除</button>` : ''}
-      </div>`).join('') : '<div class="text-center text-slate-400 py-12">暂无卡密</div>';
+      list.innerHTML = rows.length ? rows.map((c: any) => {
+        const assignSel = `<select class="input !w-32 !py-1 !px-2 text-xs assignsel" data-id="${c.id}"><option value="">→商品</option></select><button onclick="assignCard(${c.id})" class="btn-ghost !py-1 !px-2 text-xs">分配</button>`;
+        const ops = (c.status === 0)
+          ? `<button onclick="editCard(${c.id})" class="btn-ghost !py-1 !px-2 text-xs">编辑</button>${assignSel}${Number(c.product_id) > 0 ? `<button onclick="releaseCard(${c.id})" class="btn-ghost !py-1 !px-2 text-xs">回库</button>` : ''}<button onclick="deleteCard(${c.id})" class="btn-ghost !py-1 !px-2 text-xs !text-rose-500">删除</button>`
+          : '<span class="text-xs text-muted">已售不可改</span>';
+        return `<div class="card px-4 py-2.5 flex flex-wrap items-center gap-3">
+          <code class="text-xs text-slate-400">#${c.id}</code>
+          <span class="badge ${c.status === 1 ? 'badge-success' : ''}">${c.status === 1 ? '已售' : '未售'}</span>
+          <span class="badge badge-primary">${esc(cardProductLabel(c))}</span>
+          <code class="text-sm font-mono break-all flex-1">${esc(c.card)}</code>
+          <span class="text-xs text-muted">${c.status === 1 ? '订单 ' + esc(String(c.order_id || '').slice(0, 10)) : ''}</span>
+          <div class="flex flex-wrap gap-1">${ops}</div>
+        </div>`;
+      }).join('') : '<div class="text-center text-slate-400 py-12">暂无卡密</div>';
+      document.querySelectorAll('.assignsel').forEach((sel: any) => fillAssignOptions(sel));
     } catch (e: any) { list.innerHTML = '<div class="text-rose-500">加载失败</div>'; }
+  }
+
+  function fillAssignOptions(sel: HTMLSelectElement) {
+    if (sel.options.length > 1) return;
+    cardProducts.forEach((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.title; sel.appendChild(o); });
+  }
+
+  async function fillCardProducts() {
+    try {
+      const d = await request('/api/admin/products');
+      cardProducts = d.data || [];
+      const rebuild = (selId: string, libLabel: string, addAll: boolean) => {
+        const sel = document.querySelector(selId) as HTMLSelectElement;
+        if (!sel) return;
+        let html = addAll ? '<option value="">全部</option>' : '';
+        if (libLabel) html += `<option value="0">${libLabel}</option>`;
+        sel.innerHTML = html;
+        cardProducts.forEach((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.title; sel.appendChild(o); });
+      };
+      rebuild('#cards-product', '未分配(库)', true);
+      rebuild('#cc-product', '卡密库（暂不分配）', false);
+      rebuild('#ci-product', '卡密库（暂不分配）', false);
+    } catch { /* 忽略 */ }
+  }
+
+  async function openCardCreate() { await fillCardProducts(); (document.querySelector('#card-create-modal') as any).classList.remove('hidden'); (document.querySelector('#cc-msg') as any).textContent = ''; }
+  function closeCardCreate() { (document.querySelector('#card-create-modal') as any).classList.add('hidden'); }
+  async function openCardImport() { await fillCardProducts(); (document.querySelector('#card-import-modal') as any).classList.remove('hidden'); (document.querySelector('#ci-msg') as any).textContent = ''; }
+  function closeCardImport() { (document.querySelector('#card-import-modal') as any).classList.add('hidden'); }
+
+  async function createCard() {
+    const card = (document.querySelector('#cc-text') as any).value.trim();
+    if (!card) return alert('卡密内容为空');
+    const product_id = Number((document.querySelector('#cc-product') as any).value || 0);
+    try { await request('/api/admin/cards', { method: 'POST', body: JSON.stringify({ action: 'create', card, product_id }) }); (document.querySelector('#cc-msg') as any).textContent = '✅ 已创建'; closeCardCreate(); loadCards(); }
+    catch (e: any) { (document.querySelector('#cc-msg') as any).textContent = e.message; }
+  }
+
+  async function cardImport() {
+    const text = (document.querySelector('#ci-text') as any).value;
+    const product_id = Number((document.querySelector('#ci-product') as any).value || 0);
+    if (!text.trim()) return alert('卡密内容为空');
+    try {
+      const data = await request('/api/admin/cards', { method: 'POST', body: JSON.stringify({ action: 'import', text, product_id }) });
+      (document.querySelector('#ci-msg') as any).textContent = `✅ 成功导入 ${data.data.count} 条${data.data.skipped ? '，跳过重复 ' + data.data.skipped : ''}`;
+      setTimeout(closeCardImport, 1000); loadCards();
+    } catch (e: any) { (document.querySelector('#ci-msg') as any).textContent = e.message; }
+  }
+
+  async function editCard(id: number) {
+    const v = prompt('修改卡密内容（留空则取消）');
+    if (v === null) return;
+    const card = v.trim(); if (!card) return;
+    try { await request('/api/admin/cards', { method: 'POST', body: JSON.stringify({ action: 'update', id, card }) }); loadCards(); }
+    catch (e: any) { alert(e.message); }
+  }
+
+  async function assignCard(id: number) {
+    const product_id = Number((document.querySelector(`.assignsel[data-id="${id}"]`) as any)?.value || 0);
+    if (!product_id) return alert('请先选择目标商品');
+    try { await request('/api/admin/cards', { method: 'POST', body: JSON.stringify({ action: 'assign', ids: [id], product_id }) }); loadCards(); }
+    catch (e: any) { alert(e.message); }
+  }
+
+  async function releaseCard(id: number) {
+    if (!confirm('确认将该卡密移回卡密库（未分配）？')) return;
+    try { await request('/api/admin/cards', { method: 'POST', body: JSON.stringify({ action: 'release', id }) }); loadCards(); }
+    catch (e: any) { alert(e.message); }
   }
 
   async function deleteCard(id: number) {
     if (!confirm('确认删除该卡密？')) return;
-    try { await request('/api/admin/cards', { method: 'POST', body: JSON.stringify({ id }) }); loadCards(); }
+    try { await request('/api/admin/cards', { method: 'POST', body: JSON.stringify({ action: 'delete', id }) }); loadCards(); }
     catch (e: any) { alert(e.message); }
   }
 
-  async function fillCardProducts() {
-    const sel = document.querySelector('#cards-product') as HTMLSelectElement;
-    if (!sel || sel.options.length > 1) return;
+  // 从卡密库分配未分配卡密到当前编辑的商品
+  async function openAssignModal() {
+    if (!editingId) return alert('请先保存商品再选择卡密');
+    const sel = document.querySelector('#as-list') as HTMLElement;
+    sel.innerHTML = '加载中…';
+    (document.querySelector('#card-assign-modal') as any).classList.remove('hidden');
     try {
-      const d = await request('/api/admin/products');
-      (d.data || []).forEach((p: any) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.title; sel.appendChild(o); });
-    } catch { /* 忽略 */ }
+      const d = await request('/api/admin/cards?product_id=0&status=0&limit=300');
+      const rows = d.data || [];
+      sel.innerHTML = rows.length
+        ? rows.map((c: any) => `<label class="flex items-start gap-2 py-1.5"><input type="checkbox" class="as-check" value="${c.id}" /><code class="text-xs font-mono break-all flex-1">${esc(c.card)}</code></label>`).join('')
+        : '<div class="text-center text-muted py-6">卡密库没有可用卡密，请先创建/导入</div>';
+    } catch (e: any) { sel.textContent = '加载失败'; }
+  }
+  function closeAssignModal() { (document.querySelector('#card-assign-modal') as any).classList.add('hidden'); }
+  async function doAssign() {
+    const ids = Array.from(document.querySelectorAll('.as-check:checked')).map((c: any) => Number(c.value));
+    if (!ids.length) return alert('请勾选卡密');
+    try {
+      await request('/api/admin/cards', { method: 'POST', body: JSON.stringify({ action: 'assign', ids, product_id: editingId }) });
+      alert(`已将 ${ids.length} 张卡密分配到「${editingId}」`);
+      closeAssignModal(); loadProducts();
+    } catch (e: any) { alert(e.message); }
   }
 
   // ============ 仪表盘 ============
@@ -918,12 +1072,6 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     (document.querySelector('#e-cover-file') as HTMLInputElement).click();
   }
 
-  async function rtCmd(cmd: string, val?: string) {
-    const editor = document.querySelector('#e-desc') as HTMLElement;
-    editor.focus();
-    document.execCommand(cmd, false, val);
-  }
-
   async function uploadImageFile(file: File): Promise<string> {
     const fd = new FormData();
     fd.append('file', file);
@@ -933,8 +1081,42 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     return data.data.url as string;
   }
 
-  async function rtImage() {
-    (document.querySelector('#e-desc-file') as HTMLInputElement).click();
+  function execCmd(cmd: string, val?: string) {
+    const editor = document.querySelector('#e-desc') as HTMLElement;
+    editor.focus();
+    document.execCommand(cmd, false, val);
+  }
+
+  function setupRichText() {
+    const editor = document.querySelector('#e-desc') as HTMLElement;
+    // 点工具按钮不丢失选区
+    document.querySelectorAll('.rt-btn').forEach((btn: any) => {
+      btn.addEventListener('mousedown', (e: Event) => e.preventDefault());
+      btn.addEventListener('click', () => {
+        const cmd = btn.dataset.cmd;
+        if (cmd === 'formatBlock') return execCmd('formatBlock', btn.dataset.val || 'P');
+        if (cmd === 'removeFormat') { editor.focus(); document.execCommand('removeFormat'); return; }
+        if (cmd === 'undo' || cmd === 'redo') { editor.focus(); document.execCommand(cmd); return; }
+        execCmd(cmd);
+      });
+    });
+
+    document.getElementById('rt-link-btn')?.addEventListener('click', () => {
+      const url = prompt('输入链接地址 (https://…)');
+      if (!url) return;
+      execCmd('createLink', url);
+    });
+
+    document.getElementById('rt-img-btn')?.addEventListener('click', () => {
+      (document.querySelector('#e-desc-file') as HTMLInputElement).click();
+    });
+
+    document.getElementById('rt-preview-btn')?.addEventListener('click', () => {
+      const editing = editor.contentEditable !== 'false';
+      editor.contentEditable = editing ? 'false' : 'true';
+      editor.style.background = editing ? 'transparent' : '';
+      (document.getElementById('rt-preview-btn') as HTMLElement).textContent = editing ? '✎ 编辑' : '👁 预览';
+    });
   }
 
   function openEdit(id: number) {
@@ -1057,8 +1239,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   (window as any).completeSweep = completeSweep;
   (window as any).runSweep = runSweep;
   (window as any).uploadCover = uploadCover;
-  (window as any).rtCmd = rtCmd;
-  (window as any).rtImage = rtImage;
+  setupRichText();
   (document.querySelector('#e-cover-file') as HTMLInputElement)?.addEventListener('change', async (e: any) => {
     const f = e.target.files?.[0]; if (!f) return;
     try { const url = await uploadImageFile(f); setCover(url, f.name); } catch (err: any) { alert(err.message); }
@@ -1067,8 +1248,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     const f = e.target.files?.[0]; if (!f) return;
     try { const url = await uploadImageFile(f); const editor = document.querySelector('#e-desc') as HTMLElement; editor.focus(); document.execCommand('insertImage', false, url); }
     catch (err: any) { alert(err.message); }
-  });
-  (document.querySelector('#cards-q') as HTMLInputElement)?.addEventListener('input', () => loadCards());
+  });  (document.querySelector('#cards-q') as HTMLInputElement)?.addEventListener('input', () => loadCards());
   (document.querySelector('#cards-product') as HTMLSelectElement)?.addEventListener('change', () => loadCards());
   (document.querySelector('#cards-status') as HTMLSelectElement)?.addEventListener('change', () => loadCards());
   (window as any).loadRefunds = loadRefunds;
@@ -1081,6 +1261,18 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   (window as any).loadDashboard = loadDashboard;
   (window as any).loadCards = loadCards;
   (window as any).deleteCard = deleteCard;
+  (window as any).openCardCreate = openCardCreate;
+  (window as any).closeCardCreate = closeCardCreate;
+  (window as any).openCardImport = openCardImport;
+  (window as any).closeCardImport = closeCardImport;
+  (window as any).createCard = createCard;
+  (window as any).cardImport = cardImport;
+  (window as any).editCard = editCard;
+  (window as any).assignCard = assignCard;
+  (window as any).releaseCard = releaseCard;
+  (window as any).openAssignModal = openAssignModal;
+  (window as any).closeAssignModal = closeAssignModal;
+  (window as any).doAssign = doAssign;
   (window as any).openOrderDetail = openOrderDetail;
   (window as any).closeOrderDetail = closeOrderDetail;
   (window as any).loadWallet = loadWallet;

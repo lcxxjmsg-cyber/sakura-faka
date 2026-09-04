@@ -70,6 +70,13 @@ export async function getOrderCards(db: D1Database, orderId: string): Promise<Ca
   return [];
 }
 
+// 重新计算商品库存 = 该商品未售卡密数
+export async function recalcProductStock(db: D1Database, productId: number): Promise<void> {
+  if (productId > 0) {
+    await db.prepare(`UPDATE products SET stock=(SELECT COUNT(*) FROM cards WHERE product_id=? AND status=0), updated_at=datetime('now') WHERE id=?`).bind(productId, productId).run();
+  }
+}
+
 // 写入订单-卡密关联
 export async function linkOrderCards(db: D1Database, orderId: string, cardIds: number[]): Promise<void> {
   for (const cid of cardIds) {

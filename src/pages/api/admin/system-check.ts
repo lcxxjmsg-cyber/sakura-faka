@@ -17,20 +17,24 @@ export const GET: APIRoute = async ({ request, locals }: any) => {
 
   const checks: Check[] = [];
 
-  // 1) 环境配置
-  const required = [
-    ['TRON_MNEMONIC', env.TRON_MNEMONIC],
-    ['ADMIN_PASSWORD', env.ADMIN_PASSWORD],
-    ['CRON_SECRET', env.CRON_SECRET],
-    ['TRON_MASTER_ADDRESS', env.TRON_MASTER_ADDRESS],
-  ] as const;
-  for (const [key, value] of required) {
-    checks.push({ key, label: `环境变量 ${key}`, ok: !!value, value: value ? '已设置' : '缺失' });
-  }
+  // 1) 管理员密码安全（数据库哈希或自定义环境变量，绝不使用默认值）
   const useDefault = await usingDefaultPassword(env);
-  checks.push({ key: 'ADMIN_PASSWORD_DEFAULT', label: '管理员密码', ok: !useDefault, note: useDefault ? '仍在使用默认密码 faka8888（请尽快在后台修改）' : '已设置' });
-  checks.push({ key: 'AUTO_SWEEP_ENABLED', label: '自动归集开关', ok: await isAutoSweepEnabled(env), value: '', note: (await isAutoSweepEnabled(env)) ? '已开启（真实广播）' : '未开启（安全默认，可在系统设置开启）' });
-  checks.push({ key: 'EMAIL', label: '邮件通知', ok: !!(env.RESEND_API_KEY && env.MAIL_FROM), note: (env.RESEND_API_KEY && env.MAIL_FROM) ? '已配置' : '未配置（可选）' });
+  checks.push({ key: 'ADMIN_PASSWORD', label: '管理员密码', ok: !useDefault, note: useDefault ? '仍在使用默认密码 faka8888，请尽快在「系统设置」修改' : '已设置' });
+
+  // 2) 收款钱包就绪（后台已生成 或 配置了外部助记词）
+  const hasExternal = !!env.TRON_MNEMONIC;
+  const walletRow = await env.DB.prepare(`SELECT COUNT(*) AS c FROM wallet_meta WHERE encrypted_mnemonic<>'' OR mnemonic<>''`).first<{ c: number }>();
+  const walletReady = hasExternal || (walletRow?.c ?? 0) > 0;
+  checks.push({ key: 'WALLET', label: '收款钱包', ok: walletReady, note: walletReady ? '已就绪' : '未生成（可到「收款钱包」一键生成）' });
+
+  // 3) 可选项：仅提示，不算失败
+  checks.push({ key: 'CRON_SECRET', label: 'Cron 手动触发密钥', ok: true, note: '可选：定时自动跑不需要；仅手动调用 /api/cron 需要' });
+  checks.push({ key: 'TRON_MASTER_ADDRESS', label: '归集主钱包', ok: true, note: env.TRON_MASTER_ADDRESS ? '使用外部地址' : '使用系统内置钱包（后台生成）' });
+  checks.push({ key: 'EMAIL', label: '邮件通知', ok: true, note: (env.RESEND_API_KEY && env.MAIL_FROM) ? '已配置' : '未配置（可选）' });
+
+  // 4) 自动归集开关（当前状态，仅提示）
+  const autoSweep = await isAutoSweepEnabled(env);
+  checks.push({ key: 'AUTO_SWEEP_ENABLED', label: '自动归集', ok: autoSweep, note: autoSweep ? '已开启（真实广播）' : '未开启（可在「系统设置 → 功能开关」开启）' });
 
   // 2) 数据库连通 + 表
   try {
