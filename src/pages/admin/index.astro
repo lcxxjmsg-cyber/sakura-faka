@@ -14,18 +14,38 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     ⚠️ 当前仍在使用<b>初始默认密码</b>。请前往下方「系统设置 → 修改后台登录密码」立即修改，否则任何人知道默认密码都可登录。
   </div>
 
-  <div class="flex gap-2 mb-6 border-b border-slate-200">
-    <button class="tab-btn" data-tab="wallet">🏦 收款钱包</button>
-    <button class="tab-btn active" data-tab="products">📦 商品管理</button>
-    <button class="tab-btn" data-tab="orders">🧾 订单管理</button>
-    <button class="tab-btn" data-tab="stats">📊 经营概览</button>
-    <button class="tab-btn" data-tab="payments">💳 支付对账</button>
-    <button class="tab-btn" data-tab="refunds">↩️ 退款</button>
-    <button class="tab-btn" data-tab="sweeps">🔄 资金归集</button>
-    <button class="tab-btn" data-tab="logs">📜 操作日志</button>
-    <button class="tab-btn" data-tab="system">🩺 系统自检</button>
-    <button class="tab-btn" data-tab="settings">⚙️ 系统设置</button>
-  </div>
+  <div class="lg:grid lg:grid-cols-[240px_1fr] lg:gap-6 lg:items-start">
+    <button id="sidebar-toggle" class="lg:hidden btn-ghost !py-2 !px-4 text-sm mb-3">☰ 菜单</button>
+    <aside id="admin-sidebar" class="hidden lg:block lg:sticky lg:top-20 rounded-xl border p-2 space-y-1" style="border-color: var(--border); background: var(--bg-elev)">
+      <p class="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide" style="color: var(--muted)">概览</p>
+      <button class="tab-btn" data-tab="dashboard">仪表盘</button>
+      <p class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide" style="color: var(--muted)">商品 / 订单</p>
+      <button class="tab-btn active" data-tab="products">商品管理</button>
+      <button class="tab-btn" data-tab="orders">订单管理</button>
+      <button class="tab-btn" data-tab="refunds">退款</button>
+      <p class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide" style="color: var(--muted)">支付 / 资金</p>
+      <button class="tab-btn" data-tab="payments">支付对账</button>
+      <button class="tab-btn" data-tab="sweeps">资金归集</button>
+      <button class="tab-btn" data-tab="wallet">收款钱包</button>
+      <p class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide" style="color: var(--muted)">运营</p>
+      <button class="tab-btn" data-tab="stats">经营概览</button>
+      <button class="tab-btn" data-tab="logs">操作日志</button>
+      <p class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide" style="color: var(--muted)">系统</p>
+      <button class="tab-btn" data-tab="system">系统自检</button>
+      <button class="tab-btn" data-tab="settings">系统设置</button>
+    </aside>
+
+    <div class="min-w-0 space-y-6">
+      <!-- 仪表盘 -->
+      <section id="tab-dashboard" class="tab-panel hidden">
+        <h2 class="font-semibold text-slate-700 mb-4">仪表盘</h2>
+        <div id="dash-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-4">加载中…</div>
+        <div class="mt-4 grid lg:grid-cols-2 gap-4">
+          <div class="card p-4"><div class="text-sm text-slate-500 font-medium mb-3">近 7 天销售趋势</div><div id="dash-trend" class="text-xs">加载中…</div></div>
+          <div class="card p-4"><div class="text-sm text-slate-500 font-medium mb-3">订单状态分布</div><div id="dash-status" class="text-xs">加载中…</div></div>
+        </div>
+        <div class="mt-4 card p-4"><div class="text-sm text-slate-500 font-medium mb-3">最近订单</div><div id="dash-recent" class="space-y-2">加载中…</div></div>
+      </section>
 
   <!-- 收款钱包 -->
   <section id="tab-wallet" class="tab-panel hidden">
@@ -148,6 +168,8 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       </div>
     </div>
   </section>
+    </div>
+  </div>
 </Layout>
 
 <!-- 新增/编辑商品弹窗 -->
@@ -246,6 +268,18 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   </div>
 </div>
 
+<!-- 订单详情 Drawer -->
+<div id="order-drawer" class="hidden fixed inset-0 z-50 flex justify-end">
+  <div class="absolute inset-0 bg-black/40" onclick="closeOrderDetail()"></div>
+  <div class="relative w-full max-w-xl h-full overflow-y-auto" style="background: var(--bg-elev)">
+    <div class="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b" style="border-color: var(--border); background: var(--bg-elev)">
+      <span class="font-bold t-title">订单详情</span>
+      <button onclick="closeOrderDetail()" class="btn-ghost !px-3 !py-1.5 text-xs">关闭</button>
+    </div>
+    <div id="order-detail-body" class="p-5 space-y-4">加载中…</div>
+  </div>
+</div>
+
 <style is:global>
   .tab-btn { @apply px-4 py-2.5 text-sm font-medium text-slate-500 hover:text-rose-500 transition border-b-2 border-transparent; }
   .tab-btn.active { @apply text-rose-500 border-rose-400; }
@@ -297,6 +331,11 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     btn.onclick = () => activateTab(btn.dataset.tab);
   });
 
+  // 移动端侧栏抽屉切换
+  document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
+    document.getElementById('admin-sidebar')?.classList.toggle('hidden');
+  });
+
   document.querySelectorAll('.status-btn').forEach((btn: any) => {
     btn.onclick = () => {
       document.querySelectorAll('.status-btn').forEach((b: any) => b.classList.remove('active'));
@@ -308,6 +347,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
 
   // ============ 加载数据 ============
   async function load(tab: string) {
+    if (tab === 'dashboard') return loadDashboard();
     if (tab === 'wallet') return loadWallet();
     if (tab === 'products') return loadProducts();
     if (tab === 'orders') return loadOrders();
@@ -608,6 +648,67 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     } catch (e: any) { alert(e.message); }
   }
 
+  // ============ 仪表盘 ============
+  async function loadDashboard() {
+    const kpis = document.querySelector('#dash-kpis') as HTMLElement;
+    try {
+      const data = await request('/api/admin/overview');
+      const o = data.data;
+      const sale = (Number(o.today_sales || 0) / 1e6).toFixed(2);
+      const msweep = (Number(o.pending_sweep_usdt || 0) / 1e6).toFixed(2);
+      kpis.innerHTML = `
+        <div class="card p-4"><div class="text-xs text-muted">今日销售额</div><div class="text-xl font-bold mt-1" style="color: var(--primary)">${sale} <span class="text-xs font-normal text-muted">USDT</span></div></div>
+        <div class="card p-4"><div class="text-xs text-muted">今日订单</div><div class="text-xl font-bold mt-1">${o.today_orders || 0}</div></div>
+        <div class="card p-4"><div class="text-xs text-muted">待支付</div><div class="text-xl font-bold mt-1 text-amber-600">${o.pending_pay || 0}</div></div>
+        <div class="card p-4"><div class="text-xs text-muted">待发货</div><div class="text-xl font-bold mt-1 text-rose-500">${o.pending_ship || 0}</div></div>
+      `;
+      const trend = (o.trends || []);
+      document.querySelector('#dash-trend')!.innerHTML = trend.length
+        ? trend.map((t: any) => `<div class="flex items-center justify-between py-1 border-b" style="border-color: var(--border)"><span class="text-muted">${t.day}</span><span>${(Number(t.sales) / 1e6).toFixed(2)} USDT · ${t.orders} 单</span></div>`).join('')
+        : '<div class="text-muted">暂无数据</div>';
+      const dist = (o.status_distribution || []);
+      document.querySelector('#dash-status')!.innerHTML = dist.length
+        ? dist.map((s: any) => `<div class="flex items-center justify-between py-1 border-b" style="border-color: var(--border)"><span class="text-muted">${esc(s.status)}</span><span>${s.c}</span></div>`).join('')
+        : '<div class="text-muted">暂无数据</div>';
+      const recent = (o.recent_orders || []);
+      document.querySelector('#dash-recent')!.innerHTML = recent.length
+        ? recent.map((r: any) => `<div class="flex items-center justify-between gap-3 py-1.5 border-b" style="border-color: var(--border)">` +
+            `<button onclick="openOrderDetail('${esc(r.id)}')" class="text-left"><span class="font-mono text-xs">${esc(r.id)}</span> · ${esc(r.product_title)} ×${r.qty}</button>` +
+            `<span class="text-sm" style="color: var(--primary)">${(Number(r.total_price) / 1e6).toFixed(2)} USDT</span></div>`).join('')
+        : '<div class="text-muted">暂无订单</div>';
+    } catch { kpis.textContent = '加载失败'; }
+  }
+
+  // ============ 订单详情 Drawer ============
+  const osMap: Record<string, string> = { pending: '待支付', payment_detected: '已到账·确认中', paid: '已确认·待发货', fulfilling: '发货中', shipped: '已发货', closed: '已关闭', manual_review: '人工处理', refund_pending: '退款中', refunded: '已退款' };
+  function closeOrderDetail() { (document.querySelector('#order-drawer') as any).classList.add('hidden'); }
+
+  async function openOrderDetail(orderId: string) {
+    const body = document.querySelector('#order-detail-body') as HTMLElement;
+    body.innerHTML = '加载中…';
+    (document.querySelector('#order-drawer') as any).classList.remove('hidden');
+    try {
+      const data = await request(`/api/admin/order-detail?order_id=${encodeURIComponent(orderId)}`);
+      const d = data.data;
+      const o = d.order || {};
+      const amt = (Number(o.total_price) / 1e6).toFixed(2);
+      const timeline = (d.events || []).map((e: any) => `<div class="flex gap-3 text-xs"><span class="text-muted w-32 shrink-0">${esc((e.created_at || '').slice(5, 16).replace('T', ' '))}</span><span>${esc(e.from_status || '')} → <b style="color: var(--primary)">${esc(e.to_status || '')}</b> <span class="text-muted">${esc(e.event_type)}</span></span></div>`).join('') || '<span class="text-muted">暂无</span>';
+      const cards = (d.cards || []).map((c: any) => `<div class="p-2 rounded font-mono text-xs break-all" style="background: var(--bg-subtle); border: 1px solid var(--border)">${esc(c.card)}</div>`).join('') || '<span class="text-muted">无卡密</span>';
+      body.innerHTML = `
+        <div class="card p-4 space-y-2">
+          <div class="flex items-center justify-between"><code class="text-sm">${esc(o.id)}</code><span class="badge badge-primary">${esc(osMap[o.status] || o.status)}</span></div>
+          <div class="grid grid-cols-2 gap-2 text-sm"><div class="text-muted">商品</div><div>${esc(o.product_title)} ×${o.qty}</div></div>
+          <div class="grid grid-cols-2 gap-2 text-sm"><div class="text-muted">金额</div><div style="color: var(--primary)">${amt} USDT</div></div>
+          <div class="grid grid-cols-2 gap-2 text-sm"><div class="text-muted">收款地址</div><div class="break-all font-mono text-xs">${esc(o.address)}</div></div>
+          <div class="grid grid-cols-2 gap-2 text-sm"><div class="text-muted">确认数</div><div>${o.tx_confirm || 0}</div><div class="text-muted">创建</div><div>${esc((o.created_at || '').slice(0, 16).replace('T', ' '))}</div></div>
+        </div>
+        <div class="card p-4"><p class="font-semibold t-title mb-2">状态时间线</p><div class="space-y-1.5">${timeline}</div></div>
+        <div class="card p-4"><p class="font-semibold t-title mb-2">支付流水 (${(d.payments || []).length})</p><div class="space-y-1 text-xs">${(d.payments || []).map((p: any) => `<div class="flex justify-between"><span class="text-muted">${(Number(p.amount) / 1e6).toFixed(2)} USDT · ${p.status} · ${p.confirmations}确认</span></div>`).join('') || '<span class="text-muted">无</span>'}</div></div>
+        <div class="card p-4"><p class="font-semibold t-title mb-2">发货内容 (${(d.cards || []).length})</p><div class="space-y-2">${cards}</div></div>
+        <div class="card p-4"><p class="font-semibold t-title mb-2">归集任务</p><div class="space-y-1 text-xs">${(d.sweeps || []).map((s: any) => `<div class="flex justify-between"><span class="text-muted">#${s.id} ${s.status}</span><span>${esc(s.tx_hash?.slice(0, 18) || '')}</span></div>`).join('') || '<span class="text-muted">无</span>'}</div></div>`;
+    } catch (e: any) { body.innerHTML = '<div class="text-rose-500">加载失败</div>'; }
+  }
+
   // ============ 查看订单卡密 / 模拟到账 ============
   function closeCards() { (document.querySelector('#cards-modal') as any).classList.add('hidden'); }
 
@@ -680,6 +781,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
           <span class="text-xs text-slate-400 hidden md:inline">${esc(o.address.slice(0, 16))}…</span>
           <span class="text-xs text-slate-400">${esc((o.created_at || '').slice(0, 16).replace('T',' '))}</span>
           <div class="ml-auto flex gap-2">
+            <button onclick="openOrderDetail('${o.id}')" class="btn-ghost !py-1.5 !px-3 text-xs">详情</button>
             ${
               o.status === 'paid' || o.status === 'pending'
                 ? `<button onclick="reship('${o.id}')" class="btn-ghost !py-1.5 !px-3 text-xs">补发</button>`
@@ -843,6 +945,9 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   (window as any).updateRefund = updateRefund;
   (window as any).loadLogs = loadLogs;
   (window as any).runSystemCheck = runSystemCheck;
+  (window as any).loadDashboard = loadDashboard;
+  (window as any).openOrderDetail = openOrderDetail;
+  (window as any).closeOrderDetail = closeOrderDetail;
   (window as any).loadWallet = loadWallet;
   (window as any).generateWallet = generateWallet;
   (window as any).viewMnemonic = viewMnemonic;
@@ -865,7 +970,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
         (document.querySelector('#pwd-banner') as any).classList.remove('hidden');
         activateTab('settings');
       } else {
-        loadProducts();
+        activateTab('dashboard');
       }
     } catch { loadProducts(); }
   })();
