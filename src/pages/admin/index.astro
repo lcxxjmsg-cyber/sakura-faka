@@ -148,6 +148,16 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
         </div>
       </div>
       <div class="card p-5">
+        <h3 class="font-semibold text-slate-700 mb-3">⚙️ 功能开关</h3>
+        <div class="space-y-3">
+          <label class="flex items-center justify-between gap-3 text-sm">
+            <span>自动归集<span class="block text-xs text-muted">开启后，收款子地址的 USDT 会自动转入主钱包（需先生成钱包并配好 TRX 能量费）</span></span>
+            <input id="set-autosweep" type="checkbox" class="w-5 h-5" />
+          </label>
+          <button onclick="saveSweepToggle()" class="btn-primary !py-2 !px-5 text-sm">保存开关</button>
+        </div>
+      </div>
+      <div class="card p-5">
         <h3 class="font-semibold text-slate-700 mb-3">📧 邮件通知 (Resend)</h3>
         <div class="space-y-3">
           <label class="block text-sm text-slate-500">发件人 (MAIL_FROM)<input id="set-mail-from" class="input mt-1" placeholder="如 樱花市集 <no-reply@你的域名>" /></label>
@@ -600,6 +610,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       (document.querySelector('#set-site-welcome') as any).value = s.site_welcome || '';
       (document.querySelector('#set-mail-from') as any).value = s.mail_from || '';
       (document.querySelector('#set-mail-key') as any).value = '';
+      (document.querySelector('#set-autosweep') as any).checked = !!s.auto_sweep_enabled;
       (document.querySelector('#mail-status') as any).textContent = s.mail_configured
         ? `已配置（key: ${s.mail_resend_key_masked}）`
         : (s.mail_from ? '已填发件人，缺少 API Key' : '未配置');
@@ -628,6 +639,12 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     const mail_resend_key = (document.querySelector('#set-mail-key') as any).value.trim();
     if (!mail_from && !mail_resend_key) return alert('请填写发件人或 Resend API Key（留空将清空）');
     try { await request('/api/admin/settings', { method: 'POST', body: JSON.stringify({ mail_from, mail_resend_key }) }); alert('已保存邮件配置'); loadSettings(); }
+    catch (e: any) { alert(e.message); }
+  }
+
+  async function saveSweepToggle() {
+    const enabled = (document.querySelector('#set-autosweep') as any).checked;
+    try { await request('/api/admin/settings', { method: 'POST', body: JSON.stringify({ auto_sweep_enabled: enabled }) }); alert(enabled ? '自动归集已开启（真实广播，请确保子地址有 TRX 能量费）' : '自动归集已关闭'); loadSettings(); }
     catch (e: any) { alert(e.message); }
   }
 
@@ -957,6 +974,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   (window as any).loadSettings = loadSettings;
   (window as any).saveSite = saveSite;
   (window as any).saveMail = saveMail;
+  (window as any).saveSweepToggle = saveSweepToggle;
   (window as any).changePassword = changePassword;
   (window as any).viewCards = viewCards;
   (window as any).closeCards = closeCards;

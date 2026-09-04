@@ -12,6 +12,7 @@ import {
   validateTronAddress,
 } from '@/lib/tron';
 import { getWalletMnemonic, getMasterAddress } from '@/lib/wallet';
+import { isAutoSweepEnabled } from '@/lib/config';
 
 // ============================================================
 // 真实 USDT (TRC-20) 自动归集
@@ -220,7 +221,7 @@ async function confirmBroadcast(env: StoreEnv, task: SweepTask): Promise<boolean
 // 自动处理可执行任务 + 确认已完成（供 cron 调用；AUTO_SWEEP_ENABLED=true 才真正广播）
 // ============================================================
 export async function processPendingSweeps(env: StoreEnv): Promise<{ processed: number; swept: number; failed: number }> {
-  if (env.AUTO_SWEEP_ENABLED !== 'true') return { processed: 0, swept: 0, failed: 0 };
+  if (!(await isAutoSweepEnabled(env))) return { processed: 0, swept: 0, failed: 0 };
   const db = env.DB;
   const now = new Date().toISOString();
 

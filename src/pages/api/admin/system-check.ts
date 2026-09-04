@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
 import { deriveTronAddress, tronToHex21, USDT_TRC20_CONTRACT } from '@/lib/tron';
+import { usingDefaultPassword, isAutoSweepEnabled } from '@/lib/config';
 
 export const prerender = false;
 
@@ -26,8 +27,9 @@ export const GET: APIRoute = async ({ request, locals }: any) => {
   for (const [key, value] of required) {
     checks.push({ key, label: `环境变量 ${key}`, ok: !!value, value: value ? '已设置' : '缺失' });
   }
-  checks.push({ key: 'ADMIN_PASSWORD_DEFAULT', label: '管理员密码为默认值', ok: env.ADMIN_PASSWORD !== 'Sakura2024!', note: env.ADMIN_PASSWORD === 'Sakura2024!' ? '请务必修改默认密码' : '已修改' });
-  checks.push({ key: 'AUTO_SWEEP_ENABLED', label: '自动归集开关', ok: env.AUTO_SWEEP_ENABLED === 'true', value: env.AUTO_SWEEP_ENABLED, note: env.AUTO_SWEEP_ENABLED === 'true' ? '已启用（真实广播）' : '未启用（安全默认）' });
+  const useDefault = await usingDefaultPassword(env);
+  checks.push({ key: 'ADMIN_PASSWORD_DEFAULT', label: '管理员密码', ok: !useDefault, note: useDefault ? '仍在使用默认密码 faka8888（请尽快在后台修改）' : '已设置' });
+  checks.push({ key: 'AUTO_SWEEP_ENABLED', label: '自动归集开关', ok: await isAutoSweepEnabled(env), value: '', note: (await isAutoSweepEnabled(env)) ? '已开启（真实广播）' : '未开启（安全默认，可在系统设置开启）' });
   checks.push({ key: 'EMAIL', label: '邮件通知', ok: !!(env.RESEND_API_KEY && env.MAIL_FROM), note: (env.RESEND_API_KEY && env.MAIL_FROM) ? '已配置' : '未配置（可选）' });
 
   // 2) 数据库连通 + 表

@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
-import { getConfig, setConfig, checkAdminPassword, updateAdminPassword, hasAdminPasswordSet, usingDefaultPassword } from '@/lib/config';
+import { getConfig, setConfig, checkAdminPassword, updateAdminPassword, hasAdminPasswordSet, usingDefaultPassword, isAutoSweepEnabled } from '@/lib/config';
 
 export const prerender = false;
 
@@ -37,6 +37,7 @@ export const GET: APIRoute = async ({ request, locals, url }: any) => {
     mail_configured: !!(mail_from && mail_resend_key),
     admin_password_set,
     use_default_password: useDefaultPwd,
+    auto_sweep_enabled: await isAutoSweepEnabled(env),
     wallet_ready: (walletRow?.c ?? 0) > 0,
   });
 };
@@ -66,6 +67,9 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   // 站点信息
   if (body.site_name !== undefined) { await setConfig(env, 'site_name', String(body.site_name || '').trim()); changed = true; }
   if (body.site_welcome !== undefined) { await setConfig(env, 'site_welcome', String(body.site_welcome || '').trim()); changed = true; }
+
+  // 自动归集开关
+  if (body.auto_sweep_enabled !== undefined) { await setConfig(env, 'auto_sweep_enabled', body.auto_sweep_enabled ? 'true' : 'false'); changed = true; }
 
   if (!changed) return apiErr('没有需要保存的更改');
   return apiOk({ ok: true });

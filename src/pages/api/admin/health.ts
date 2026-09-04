@@ -24,7 +24,7 @@ export const GET: APIRoute = async ({ request, locals }: any) => {
 
   // KV
   try {
-    await env.KV.put(`${Date.now()}_health`, '1', { expirationTtl: 5 });
+    await env.KV.put(`${Date.now()}_health`, '1', { expirationTtl: 60 });
     checks.push({ key: 'kv', label: 'KV', status: 'healthy' });
   } catch (e: any) {
     checks.push({ key: 'kv', label: 'KV', status: 'error', detail: e?.message || String(e) });

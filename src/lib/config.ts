@@ -79,3 +79,9 @@ export async function updateAdminPassword(env: StoreEnv, newPassword: string): P
 export async function hasAdminPasswordSet(env: StoreEnv): Promise<boolean> {
   return !!(await getConfig(env, 'admin_password_hash', ''));
 }
+
+// 自动归集是否开启：后台设置（settings）优先，回退环境变量 AUTO_SWEEP_ENABLED
+export async function isAutoSweepEnabled(env: StoreEnv): Promise<boolean> {
+  const v = await configOr(env, 'auto_sweep_enabled', env.AUTO_SWEEP_ENABLED, 'false');
+  return v === 'true';
+}

@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
 import { trySweep, type SweepTask, type SweepResult } from '@/lib/tron-sweep';
+import { isAutoSweepEnabled } from '@/lib/config';
 
 export const prerender = false;
 
@@ -27,7 +28,7 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   const action = String(body.action || 'update');
   if (action === 'sweep' || action === 'dry_run') {
     const dryRun = action === 'dry_run';
-    if (!dryRun && env.AUTO_SWEEP_ENABLED !== 'true') return apiErr('自动归集未启用，请先设置 AUTO_SWEEP_ENABLED=true 后重试');
+    if (!dryRun && !(await isAutoSweepEnabled(env))) return apiErr('自动归集未启用，请先到「系统设置」开启后重试');
     const res: SweepResult = await trySweep(env, task, dryRun);
     const now = new Date().toISOString();
 
