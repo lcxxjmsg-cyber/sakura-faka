@@ -12,71 +12,116 @@ interface Props {
 const { id, title, desc, price, stock, deliveryType = 'text' } = Astro.props;
 const fmtPrice = formatUsdt(price);
 ---
-<div class="card p-6 md:p-8">
-  <span class="badge bg-rose-50 text-rose-500 border border-rose-200">USDT · TRC-20</span>
-  <h1 class="mt-4 text-2xl md:text-3xl font-bold text-slate-800">{title}</h1>
-  {desc && <div class="mt-3 text-sm text-slate-600 leading-relaxed prose text-slate-600">{desc}</div>}
+<div class="card p-6 space-y-5">
+  <div class="flex items-center justify-between">
+    <span class="badge badge-primary">USDT · TRC-20</span>
+    <span class="text-sm text-muted">{stock > 0 ? `库存 ${stock}` : '已售罄'}</span>
+  </div>
+  <h1 class="text-xl md:text-2xl font-extrabold t-title">{title}</h1>
 
-  <div class="mt-6 p-4 rounded-xl bg-white border border-slate-100">
-    <label class="text-sm text-slate-500">购买数量</label>
-    <div class="mt-2 flex items-center gap-3">
-      <button type="button" id="minus" class="w-10 h-10 rounded-lg border border-slate-200 hover:bg-rose-50 hover:border-rose-300 transition text-xl font-bold text-slate-600">−</button>
-      <input id="qty" type="number" min="1" max="10" value="1" class="input text-center !w-20" />
-      <button type="button" id="plus" class="w-10 h-10 rounded-lg border border-slate-200 hover:bg-rose-50 hover:border-rose-300 transition text-xl font-bold text-slate-600">＋</button>
+  <!-- 数量 + 价格 -->
+  <div class="rounded-lg p-3 space-y-3" style="background: var(--bg-subtle)">
+    <div class="flex items-center justify-between">
+      <span class="text-sm text-muted">数量</span>
+      <div class="flex items-center gap-2">
+        <button type="button" id="minus" class="w-9 h-9 rounded-lg grid place-items-center border text-lg" style="border-color: var(--border); background: var(--bg-elev)">−</button>
+        <input id="qty" type="number" min="1" max="10" value="1" class="input !w-16 text-center !px-2" />
+        <button type="button" id="plus" class="w-9 h-9 rounded-lg grid place-items-center border text-lg" style="border-color: var(--border); background: var(--bg-elev)">＋</button>
+      </div>
     </div>
-    <div class="mt-4 flex items-center justify-between text-sm">
-      <span class="text-slate-500">应付金额</span>
-      <span class="text-xl font-bold text-rose-500" id="total">{fmtPrice} <small class="text-xs font-normal text-slate-400">USDT</small></span>
+    <div class="flex items-center justify-between">
+      <span class="text-sm text-muted">应付</span>
+      <span class="text-xl font-bold" id="total" style="color: var(--primary)">{fmtPrice} <small class="text-xs font-normal text-muted">USDT</small></span>
     </div>
   </div>
 
-  <label class="mt-4 block text-sm text-slate-500">邮箱（可选，接收卡密通知）</label>
-  <input id="email" type="email" class="input mt-2" placeholder="you@example.com" />
+  <label class="block text-sm text-muted">邮箱（可选，接收发货通知）
+    <input id="email" type="email" class="input mt-1.5" placeholder="you@example.com" />
+  </label>
 
-  <button id="buy" class="btn-sakura w-full mt-6 text-lg" disabled={stock <= 0}>
+  <button id="buy" class="btn-primary w-full text-base" disabled={stock <= 0}>
     {stock > 0 ? '立即购买' : '已售罄'}
   </button>
-  <p id="tip" class="mt-3 text-center text-sm text-slate-500"></p>
+  <p id="tip" class="text-center text-sm text-muted min-h-[1.25rem]"></p>
 
-  <!-- 支付面板（隐藏，下单后显示） -->
-  <div id="pay-panel" class="hidden mt-6">
-    <div class="rounded-xl bg-white border border-rose-200 p-4">
-      <div class="flex items-center gap-2 text-rose-500 font-semibold">
-        <svg class="w-5 h-5 animate-pulse" fill="currentColor" viewBox="0 0 24 24"><path d="M12 22C6.5 22 2 17.5 2 12S6.5 2 12 2s10 4.5 10 10-4.5 10-10 10zm-1-13v4l3 3 1-1-2.5-2.5V9h-1.5z"/></svg>
+  <!-- 支付面板 -->
+  <div id="pay-panel" class="hidden space-y-4">
+    <div class="rounded-lg border p-4 space-y-3" style="border-color: var(--border)">
+      <div class="flex items-center gap-2 text-sm font-semibold" style="color: var(--primary)">
+        <span class="relative flex h-2.5 w-2.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style="background: var(--primary)"></span><span class="relative inline-flex rounded-full h-2.5 w-2.5" style="background: var(--primary)"></span></span>
         请使用 USDT (TRC-20) 转账到以下地址
       </div>
-      <div id="addr-box" class="mt-3 flex items-center gap-2">
-        <code id="pay-addr" class="text-sm break-all text-slate-700 select-all flex-1"></code>
+      <div class="flex items-center gap-2">
+        <code id="pay-addr" class="text-sm break-all select-all flex-1" style="color: var(--text)"></code>
         <button id="copy-addr" class="btn-ghost !px-3 !py-2 text-xs shrink-0">复制</button>
       </div>
-      <div class="mt-3 text-sm text-slate-500">
-        金额：<b class="text-rose-500" id="pay-amount"></b> USDT · 订单号：<code id="order-id" class="text-xs"></code>
+      <div class="flex items-center justify-between text-sm text-muted">
+        <span>订单号：<code id="order-id" class="text-xs"></code></span>
+        <span>金额：<b id="pay-amount" style="color: var(--primary)"></b> USDT</span>
       </div>
-      <div class="mt-2">
-        <span class="badge bg-amber-50 text-amber-600 border border-amber-200">⏳ 等待支付确认，最多 <span id="countdown">30:00</span></span>
+      <div class="flex items-center justify-between text-xs text-muted">
+        <span>网络：<b style="color: var(--text)">TRON (TRC-20)</b></span>
+        <span>剩余 <b id="countdown">30:00</b></span>
       </div>
+      <a id="open-wallet" href="#" target="_blank" rel="noopener" class="text-xs underline" style="color: var(--primary)">在钱包/交易所中打开</a>
     </div>
 
-    <!-- 发货展示区 -->
-    <div id="deliver" class="hidden mt-4 rounded-xl bg-emerald-50 border border-emerald-200 p-4">
-      <div class="flex items-center gap-2 text-emerald-600 font-semibold">
-        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7l-1.5-1.5L9 14l-2.5-2.5L5 13z"/></svg>
-        {deliveryType === 'json' ? '购买成功！您的资源配置：' : deliveryType === 'manual' ? '订单已支付，请等待人工处理：' : '购买成功！您的资源：'}
-      </div>
-      <div id="cards-area" class="mt-3 space-y-2"></div>
+    <!-- 状态 Stepper -->
+    <ol id="stepper" class="flex items-center text-xs">
+      <li data-step="created" class="flex-1 text-center">
+        <div class="mx-auto w-6 h-6 rounded-full grid place-items-center text-white" style="background: var(--primary)">1</div>
+        <p class="mt-1 text-muted">订单创建</p>
+      </li>
+      <li data-step="paying" class="flex-1"><div class="flex-1 h-0.5" style="background: var(--border)"></div></li>
+      <li data-step="paying" class="flex-1 text-center">
+        <div class="mx-auto w-6 h-6 rounded-full grid place-items-center border" style="border-color: var(--muted); color: var(--muted)">2</div>
+        <p class="mt-1 text-muted">等待付款</p>
+      </li>
+      <li data-step="detected" class="flex-1"><div class="flex-1 h-0.5" id="step-2-line" style="background: var(--border)"></div></li>
+      <li data-step="detected" class="flex-1 text-center">
+        <div class="mx-auto w-6 h-6 rounded-full grid place-items-center border" id="step-3" style="border-color: var(--muted); color: var(--muted)">3</div>
+        <p class="mt-1 text-muted">发现交易</p>
+      </li>
+      <li data-step="confirming" class="flex-1"><div class="flex-1 h-0.5" id="step-3-line" style="background: var(--border)"></div></li>
+      <li data-step="confirming" class="flex-1 text-center">
+        <div class="mx-auto w-6 h-6 rounded-full grid place-items-center border" id="step-4" style="border-color: var(--muted); color: var(--muted)">4</div>
+        <p class="mt-1 text-muted">链上确认</p>
+      </li>
+      <li data-step="shipped" class="flex-1"><div class="flex-1 h-0.5" id="step-4-line" style="background: var(--border)"></div></li>
+      <li data-step="shipped" class="flex-1 text-center">
+        <div class="mx-auto w-6 h-6 rounded-full grid place-items-center border" id="step-5" style="border-color: var(--muted); color: var(--muted)">5</div>
+        <p class="mt-1 text-muted">自动发货</p>
+      </li>
+    </ol>
+    <p id="pay-status" class="text-center text-sm font-medium" style="color: var(--muted)"></p>
+
+    <div class="grid grid-cols-2 gap-2">
+      <button id="check-payment" class="btn-primary !py-2.5 text-sm">我已支付，立即检测</button>
+      <button id="cancel-order" class="btn-ghost !py-2.5 text-sm">取消订单</button>
     </div>
+  </div>
+
+  <!-- 发货展示 -->
+  <div id="deliver" class="hidden rounded-lg p-4 space-y-3" style="background: var(--success-soft)">
+    <div class="flex items-center gap-2 text-sm font-semibold" style="color: var(--success)">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+      购买成功{deliveryType === 'json' ? '，您的资源配置：' : deliveryType === 'manual' ? '，已下单，请等待处理：' : '，您的资源：'}
+    </div>
+    <div id="cards-area" class="space-y-2"></div>
+    <div class="flex gap-2">
+      <button id="copy-all" class="btn-ghost !py-2 text-xs">复制全部</button>
+    </div>
+    <p id="email-status" class="text-xs" style="color: var(--muted)"></p>
   </div>
 </div>
 
 <style is:global>
   .prose p { margin: 0.4rem 0; }
-  .prose code { background: rgba(244, 63, 94, 0.08); color: #be123c; padding: 2px 6px; border-radius: 4px; }
 </style>
 
-<script is:inline define:vars={{ id, price, deliveryType }}>
+<script is:inline define:vars={{ id, price }}>
   const pid = id;
   const priceMin = BigInt(price);
-
   const $ = (s) => document.querySelector(s);
   const buyBtn = $('#buy');
   const qtyEl = $('#qty');
@@ -86,43 +131,47 @@ const fmtPrice = formatUsdt(price);
   const payAddr = $('#pay-addr');
   const payAmount = $('#pay-amount');
   const orderIdEl = $('#order-id');
+  const countdownEl = $('#countdown');
+  const openWallet = $('#open-wallet');
+  const payStatus = $('#pay-status');
   const deliverEl = $('#deliver');
   const cardsArea = $('#cards-area');
-  const countdownEl = $('#countdown');
   const emailEl = $('#email');
-
+  const emailStatus = $('#email-status');
   const mult = 1000000n;
-  let qty = 1;
-  let pollTimer = null;
-  let countdownTimer = null;
-  let orderId = '';
-  let viewToken = '';
+  let qty = 1, pollTimer = null, countdownTimer = null, orderId = '', viewToken = '';
 
   function fmtFull(minUnit) { return (Number(minUnit) / Number(mult)).toString(); }
-  function updateTotal() {
-    totalEl.textContent = `${fmtFull((priceMin * BigInt(qty)).toString())} USDT`;
-  }
+  function updateTotal() { totalEl.textContent = `${fmtFull((priceMin * BigInt(qty)).toString())} USDT`; }
+
   $('#minus').onclick = () => { qty = Math.max(1, qty - 1); qtyEl.value = qty; updateTotal(); };
   $('#plus').onclick = () => { qty = Math.min(10, qty + 1); qtyEl.value = qty; updateTotal(); };
   qtyEl.oninput = () => { qty = Math.min(10, Math.max(1, parseInt(qtyEl.value) || 1)); qtyEl.value = qty; updateTotal(); };
 
   $('#copy-addr').onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(payAddr.textContent);
-      tipEl.textContent = '✅ 地址已复制';
-    } catch { tipEl.textContent = '复制失败，请手动复制'; }
+    try { await navigator.clipboard.writeText(payAddr.textContent); tipEl.textContent = '已复制地址'; }
+    catch { tipEl.textContent = '复制失败，请手动复制'; }
   };
+
+  function setStepper(step) {
+    const order = ['paying', 'detected', 'confirming', 'shipped'];
+    const idx = order.indexOf(step);
+    const act = (dotId, lineId, on) => {
+      const d = document.querySelector(dotId); const l = document.querySelector(lineId);
+      if (d) { d.style.background = on ? 'var(--primary)' : 'var(--border)'; d.style.borderColor = on ? 'var(--primary)' : 'var(--muted)'; d.style.color = on ? '#fff' : 'var(--muted)'; }
+      if (l) l.style.background = on ? 'var(--primary)' : 'var(--border)';
+    };
+    act('#step-3', '#step-2-line', idx >= 1);
+    act('#step-4', '#step-3-line', idx >= 2);
+    act('#step-5', '#step-4-line', idx >= 3);
+  }
 
   buyBtn.onclick = async () => {
     if (qty < 1) return;
     buyBtn.disabled = true;
     tipEl.textContent = '正在创建订单…';
     try {
-      const res = await fetch('/api/order/create', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ product_id: pid, qty, email: emailEl.value }),
-      });
+      const res = await fetch('/api/order/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product_id: pid, qty, email: emailEl.value }) });
       const data = await res.json();
       if (!data.ok) { tipEl.textContent = data.error || '下单失败'; buyBtn.disabled = false; return; }
       orderId = data.data.id;
@@ -140,35 +189,30 @@ const fmtPrice = formatUsdt(price);
     payAddr.textContent = order.address;
     payAmount.textContent = fmtFull(order.total_price);
     orderIdEl.textContent = order.id;
+    openWallet.href = `tron:${order.address}`;
+    openWallet.classList.remove('hidden');
     deliverEl.classList.add('hidden');
     buyBtn.textContent = '等待支付…';
     buyBtn.disabled = true;
-    let actions = document.querySelector('#order-actions');
-    if (!actions) {
-      actions = document.createElement('div');
-      actions.id = 'order-actions';
-      actions.className = 'mt-3 flex gap-2';
-      actions.innerHTML = '<button id="check-payment" class="btn-sakura flex-1 !py-2 text-sm">我已支付，立即检测</button><button id="cancel-order" class="btn-ghost !py-2 text-sm">取消订单</button>';
-      payPanel.appendChild(actions);
-      document.querySelector('#check-payment').onclick = checkNow;
-      document.querySelector('#cancel-order').onclick = cancelCurrent;
-    }
+    payStatus.textContent = '请向以上地址转账 USDT (TRC-20)';
+    setStepper('paying');
   }
 
   async function checkNow() {
-    const button = document.querySelector('#check-payment');
+    const button = $('#check-payment');
     button.disabled = true;
     tipEl.textContent = '正在检测链上支付…';
     try {
       const res = await fetch('/api/order/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order_id: orderId, view_token: viewToken }) });
       const data = await res.json();
       if (!data.ok) { tipEl.textContent = data.error || '检测失败'; return; }
-      if (data.data.status === 'shipped') { showCards({ id: orderId }); clearPolling(); }
-      else if (data.data.status === 'payment_detected') tipEl.textContent = `已检测到付款，确认数 ${data.data.confirmations || 0}，请稍候`;
-      else if (data.data.status === 'paid' || data.data.status === 'fulfilling') tipEl.textContent = `支付已确认，正在自动发货…`;
-      else if (data.data.status === 'manual_review') tipEl.textContent = `订单需人工处理，请稍候或联系商家`;
-      else if (data.data.status === 'closed') tipEl.textContent = '订单已关闭';
-      else tipEl.textContent = '暂未检测到足额支付，请确认网络和金额';
+      const st = data.data.status;
+      if (st === 'shipped') { showCards({ id: orderId }); clearPolling(); }
+      else if (st === 'payment_detected') { payStatus.textContent = `已检测到付款，确认数 ${data.data.confirmations || 0}`; setStepper('detected'); }
+      else if (st === 'paid' || st === 'fulfilling') { payStatus.textContent = '支付已确认，正在自动发货…'; setStepper('confirming'); }
+      else if (st === 'manual_review') { payStatus.textContent = '订单需人工处理，请稍候或联系商家'; }
+      else if (st === 'closed') { payStatus.textContent = '订单已关闭'; }
+      else { payStatus.textContent = '暂未检测到足额支付'; }
     } catch { tipEl.textContent = '检测失败，请稍后重试'; }
     finally { button.disabled = false; }
   }
@@ -180,6 +224,8 @@ const fmtPrice = formatUsdt(price);
     if (data.ok) { localStorage.removeItem('faka:last-order'); clearPolling(); payPanel.classList.add('hidden'); buyBtn.textContent = '重新下单'; buyBtn.disabled = false; tipEl.textContent = '订单已取消'; }
     else tipEl.textContent = data.error || '取消失败';
   }
+  $('#cancel-order').onclick = cancelCurrent;
+  $('#check-payment').onclick = checkNow;
 
   async function resumeOrder() {
     try {
@@ -190,6 +236,8 @@ const fmtPrice = formatUsdt(price);
       if (!data.ok || data.data.status === 'closed') { localStorage.removeItem('faka:last-order'); return; }
       orderId = saved.id; viewToken = saved.token; showPayPanel(data.data); startPolling(); startCountdown();
       if (data.data.status === 'shipped') { showCards(data.data); clearPolling(); }
+      else if (data.data.status === 'payment_detected') setStepper('detected');
+      else if (data.data.status === 'paid' || data.data.status === 'fulfilling') setStepper('confirming');
     } catch {}
   }
 
@@ -202,11 +250,9 @@ const fmtPrice = formatUsdt(price);
       const s = String(sec % 60).padStart(2, '0');
       countdownEl.textContent = `${m}:${s}`;
       if (sec <= 0) {
-        clearInterval(countdownTimer);
-        clearInterval(pollTimer);
+        clearInterval(countdownTimer); clearInterval(pollTimer);
         tipEl.textContent = '订单已超时，可重新下单';
-        buyBtn.textContent = '重新下单';
-        buyBtn.disabled = false;
+        buyBtn.textContent = '重新下单'; buyBtn.disabled = false;
         payPanel.classList.add('hidden');
       }
     }, 1000);
@@ -221,15 +267,12 @@ const fmtPrice = formatUsdt(price);
         if (!data.ok) return;
         const o = data.data;
         if (o.status === 'shipped') { showCards(o); clearPolling(); }
-        else if (o.status === 'paid' || o.status === 'fulfilling') { tipEl.textContent = '支付已确认，正在自动发货…'; }
-        else if (o.status === 'payment_detected') { tipEl.textContent = `已检测到付款，确认中…`; }
-        else if (o.status === 'manual_review') { tipEl.textContent = '订单需人工处理，请稍候'; }
+        else if (o.status === 'paid' || o.status === 'fulfilling') { payStatus.textContent = '支付已确认，自动发货中…'; setStepper('confirming'); }
+        else if (o.status === 'payment_detected') { payStatus.textContent = `已检测到付款，确认中…`; setStepper('detected'); }
+        else if (o.status === 'manual_review') { payStatus.textContent = '订单需人工处理'; }
         else if (o.status === 'closed') {
-          clearPolling();
-          tipEl.textContent = '订单已关闭，请重新下单';
-          buyBtn.textContent = '重新下单';
-          buyBtn.disabled = false;
-          payPanel.classList.add('hidden');
+          clearPolling(); tipEl.textContent = '订单已关闭，请重新下单';
+          buyBtn.textContent = '重新下单'; buyBtn.disabled = false; payPanel.classList.add('hidden');
         }
       } catch {}
     }, 5000);
@@ -240,25 +283,34 @@ const fmtPrice = formatUsdt(price);
   async function showCards(o) {
     deliverEl.classList.remove('hidden');
     cardsArea.innerHTML = '';
-    tipEl.textContent = '';
+    tipEl.textContent = ''; payStatus.textContent = '支付成功，已自动发货';
+    setStepper('shipped');
     buyBtn.textContent = '已完成';
     buyBtn.disabled = true;
     try {
       const res = await fetch(`/api/order/view?id=${o.id}&token=${viewToken}`);
       const data = await res.json();
       if (data.ok && Array.isArray(data.data)) {
+        window.__cards = data.data;
         data.data.forEach((c) => {
           const d = document.createElement('div');
-          d.className = 'p-2.5 rounded-lg bg-white border border-emerald-200 font-mono text-sm text-slate-700 break-all';
-          if (deliveryType === 'json') {
-            try { d.textContent = JSON.stringify(JSON.parse(c), null, 2); }
-            catch { d.textContent = c; }
-          } else d.textContent = c;
+          d.className = 'p-2.5 rounded-lg font-mono text-sm break-all text-strong';
+          d.style.cssText = 'background: var(--bg-elev); border: 1px solid var(--border)';
+          if (deliveryType === 'json') { try { d.textContent = JSON.stringify(JSON.parse(c), null, 2); } catch { d.textContent = c; } }
+          else d.textContent = c;
           cardsArea.appendChild(d);
         });
       }
+      if (emailEl.value) emailStatus.textContent = '已尝试发送到你的邮箱（如需解锁请及时查收）';
     } catch {}
   }
+
+  document.getElementById('copy-all')?.addEventListener('click', async () => {
+    const list = window.__cards || [];
+    if (!list.length) return;
+    try { await navigator.clipboard.writeText(list.join('\n')); tipEl.textContent = '已复制全部'; }
+    catch { tipEl.textContent = '复制失败'; }
+  });
 
   updateTotal();
   resumeOrder();

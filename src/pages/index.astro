@@ -9,43 +9,92 @@ const runtime = (Astro as any).locals?.runtime;
 const env = runtime?.env;
 const site = await getSiteConfig(runtime);
 const products = env ? await getProducts(env.DB) : [];
+const categories = [...new Set(products.map((p) => p.category).filter(Boolean))];
 ---
-<Layout title="商店">
-  <section class="glass overflow-hidden text-center py-10">
-    <span class="text-6xl animate-float inline-block">🌙</span>
-    <h1 class="mt-3 text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-pink-500">{site.welcome}</h1>
-    <p class="mt-2 text-slate-600">支持 USDT (TRC-20) 支付 · 支付后自动发货</p>
+<Layout title="商品列表">
+  <section class="text-center py-12 md:py-16">
+    <h1 class="text-3xl md:text-5xl font-extrabold t-title">即时交付数字商品</h1>
+    <p class="mt-4 text-muted max-w-2xl mx-auto text-base md:text-lg">
+      选择商品，使用 <b style="color: var(--primary)">USDT (TRC-20)</b> 转账，链上确认后<b style="color: var(--primary)">自动发货</b>。
+      每笔订单独立地址，无需注册。
+    </p>
+    <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+      <a href="#products" class="btn-primary">查看商品</a>
+      <a href="/track" class="btn-ghost">查询订单</a>
+    </div>
   </section>
 
-  <section class="glass mt-6 overflow-hidden">
-    <div class="panel-header">
-      <span class="text-rose-500">🛍️</span>
-      <h6 class="m-0">购买</h6>
+  <section id="products" class="mb-6 space-y-4">
+    <div class="card px-4 py-3 flex flex-col md:flex-row md:items-center gap-3">
+      <input id="search" class="input flex-1" placeholder="搜索商品…" autocomplete="off" />
+      <div id="filters" class="flex flex-wrap gap-2">
+        <button class="chip active" data-cat="">全部</button>
+        {categories.map((c) => <button class="chip" data-cat={c}>{c}</button>)}
+      </div>
     </div>
-    <div class="p-5">
-      {
-        products.length === 0 ? (
-          <div class="text-center py-16 text-slate-500">
-            <p class="text-4xl mb-4">🍃</p>
-            <p>暂无上架商品，请等待店主补货。</p>
+
+    {products.length === 0 ? (
+      <div class="card p-16 text-center text-muted">暂无上架商品，请等待店主补货。</div>
+    ) : (
+      <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        {products.map((p) => (
+          <div data-name={p.title.toLowerCase()} data-cat={p.category || ''}>
+            <ProductCard
+              id={p.id} title={p.title} cover={p.cover} price={p.price} desc={p.description}
+              category={p.category} stock={p.stock} sold={p.sold} deliveryType={p.delivery_type}
+            />
           </div>
-        ) : (
-          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-            {products.map((p) => (
-              <ProductCard
-                id={p.id}
-                title={p.title}
-                cover={p.cover}
-                price={p.price}
-                desc={p.description}
-                category={p.category}
-                stock={p.stock}
-                sold={p.sold}
-              />
-            ))}
-          </div>
-        )
-      }
-    </div>
+        ))}
+      </div>
+    )}
   </section>
 </Layout>
+
+<style is:global>
+  .chip {
+    @apply inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition;
+    background: var(--bg-subtle);
+    color: var(--muted);
+    border: 1px solid transparent;
+  }
+  .chip:hover { color: var(--text); }
+  .chip.active { background: var(--primary); color: var(--primary-fg); }
+</style>
+
+<script>
+  const search = document.getElementById('search') as HTMLInputElement;
+  const chips = Array.from(document.querySelectorAll('.chip')) as HTMLElement[];
+  const items = Array.from(document.querySelectorAll('#grid > div')) as HTMLElement[];
+
+  function apply() {
+    const q = (search?.value || '').trim().toLowerCase();
+    const cat = document.querySelector<HTMLElement>('.chip.active')?.dataset.cat || '';
+    let visible = 0;
+    items.forEach((el) => {
+      const ok = (!q || el.dataset.name?.includes(q)) && (!cat || (el.dataset.cat || '') === cat);
+      el.style.display = ok ? '' : 'none';
+      if (ok) visible++;
+    });
+    const empty = document.querySelector('#grid-empty');
+    if (empty) empty.style.display = visible === 0 ? '' : 'none';
+    if (!items.length) return;
+    document.querySelectorAll('#grid').forEach((g) => {
+      let e = g.querySelector('#grid-empty') as HTMLElement;
+      if (!e) {
+        e = document.createElement('div');
+        e.id = 'grid-empty';
+        e.className = 'col-span-full card p-16 text-center text-muted';
+        e.textContent = '没有匹配的商品';
+        g.appendChild(e);
+      }
+      e.style.display = visible === 0 ? '' : 'none';
+    });
+  }
+
+  search?.addEventListener('input', apply);
+  chips.forEach((c) => c.addEventListener('click', () => {
+    chips.forEach((x) => x.classList.remove('active'));
+    c.classList.add('active');
+    apply();
+  }));
+</script>

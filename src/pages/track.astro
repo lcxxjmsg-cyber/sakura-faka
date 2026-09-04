@@ -1,0 +1,85 @@
+---
+import Layout from '@/layouts/Layout.astro';
+---
+<Layout title="订单查询">
+  <div class="max-w-xl mx-auto space-y-6">
+    <div class="text-center">
+      <h1 class="text-2xl font-extrabold t-title">订单查询</h1>
+      <p class="mt-2 text-sm text-muted">输入订单号与查询凭证（下单后页面保留）即可查看状态与已发资源。</p>
+    </div>
+
+    <div class="card p-6 space-y-3">
+      <input id="oid" class="input" placeholder="订单号，如 abc123def456" autocomplete="off" />
+      <input id="token" class="input" placeholder="查询凭证（可选，用于查看卡密）" autocomplete="off" />
+      <button id="track-btn" class="btn-primary w-full">查询</button>
+    </div>
+
+    <div id="result" class="hidden space-y-4"></div>
+  </div>
+</Layout>
+
+<script>
+  const oid = document.getElementById('oid') as HTMLInputElement;
+  const token = document.getElementById('token') as HTMLInputElement;
+  const result = document.getElementById('result') as HTMLElement;
+  const esc = (s: string) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+  const statusMap: Record<string, [string, string]> = {
+    pending: ['待支付', 'warning'],
+    payment_detected: ['已到账·确认中', 'warning'],
+    paid: ['已确认·待发货', 'primary'],
+    fulfilling: ['发货中', 'primary'],
+    shipped: ['已发货', 'success'],
+    closed: ['已关闭', ''],
+    manual_review: ['人工处理', 'warning'],
+    refund_pending: ['退款中', 'warning'],
+    refunded: ['已退款', 'success'],
+  };
+
+  async function run() {
+    result.classList.remove('hidden');
+    const id = oid.value.trim();
+    if (!id) { result.innerHTML = '<div class="card p-6 text-center text-muted">请输入订单号</div>'; return; }
+    result.innerHTML = '<div class="card p-6 text-center text-muted">查询中…</div>';
+    try {
+      const q = await fetch(`/api/order/query?id=${encodeURIComponent(id)}`);
+      const qd = await q.json();
+      if (!qd.ok) { result.innerHTML = `<div class="card p-6 text-center text-muted">${esc(qd.error || '未找到订单')}</div>`; return; }
+      const o = qd.data;
+      const [text, cls] = statusMap[o.status] || [o.status, ''];
+      const amt = (Number(o.total_price) / 1e6).toFixed(2);
+      result.innerHTML = `
+        <div class="card p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-muted">订单号</p>
+              <p class="font-mono text-sm">${esc(o.id)}</p>
+            </div>
+            <span class="badge ${cls === 'success' ? 'badge-success' : cls === 'primary' ? 'badge-primary' : cls === 'warning' ? 'badge-warning' : ''}">${esc(text)}</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div><p class="text-muted">商品</p><p>${esc(o.product_title)} × ${o.qty}</p></div>
+            <div><p class="text-muted">金额</p><p style="color: var(--primary)">${amt} USDT</p></div>
+            <div><p class="text-muted">创建时间</p><p>${esc((o.created_at || '').slice(0, 16).replace('T', ' '))}</p></div>
+            <div><p class="text-muted">确认数</p><p>${o.tx_confirm || 0}</p></div>
+          </div>
+        </div>`;
+
+      if (o.status === 'shipped') {
+        const tk = token.value.trim();
+        if (tk) {
+          const v = await fetch(`/api/order/view?id=${encodeURIComponent(id)}&token=${encodeURIComponent(tk)}`);
+          const vd = await v.json();
+          if (vd.ok && Array.isArray(vd.data) && vd.data.length) {
+            result.innerHTML += `<div class="card p-5"><p class="font-semibold t-title mb-3">已发资源</p><div class="space-y-2">${vd.data.map((c) => `<div class="p-2.5 rounded-lg font-mono text-sm break-all" style="background: var(--bg-subtle); border: 1px solid var(--border)">${esc(c)}</div>`).join('')}</div></div>`;
+          }
+        } else {
+          result.innerHTML += `<div class="card p-5 text-sm text-muted">输入查询凭证可查看已发资源。</div>`;
+        }
+      }
+    } catch { result.innerHTML = '<div class="card p-6 text-center text-muted">网络错误，请重试</div>'; }
+  }
+
+  document.getElementById('track-btn')?.addEventListener('click', run);
+  oid?.addEventListener('keydown', (e: KeyboardEvent) => { if (e.key === 'Enter') run(); });
+</script>
