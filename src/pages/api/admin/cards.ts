@@ -21,7 +21,10 @@ export const GET: APIRoute = async ({ request, locals, url }: any) => {
 
   const where: string[] = [];
   const binds: any[] = [];
-  if (hasPid) { where.push('c.product_id=?'); binds.push(productId); }
+  if (hasPid) {
+    if (productId === 0) where.push('c.product_id IS NULL');
+    else { where.push('c.product_id=?'); binds.push(productId); }
+  }
   if (status === '0' || status === '1') { where.push('c.status=?'); binds.push(Number(status)); }
   if (q) { where.push('c.card LIKE ?'); binds.push('%' + q + '%'); }
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
@@ -41,13 +44,14 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   const action = String(body.action || '');
   const db = env.DB;
 
-  // 创建单条卡密（product_id=0 进卡密库，>0 直接挂商品）
+  // 创建单条卡密（product_id NULL=进卡密库，>0 直接挂商品）
   if (action === 'create') {
     const card = String(body.card || '').trim();
     if (!card) return apiErr('卡密内容为空');
     const productId = Number(body.product_id ?? 0);
-    const res = await db.prepare('INSERT INTO cards (product_id, card) VALUES (?, ?)').bind(productId, card).run();
-    await recalcProductStock(db, productId);
+    const pid = productId > 0 ? productId : null;
+    const res = await db.prepare('INSERT INTO cards (product_id, card) VALUES (?, ?)').bind(pid, card).run();
+    await recalcProductStock(db, pid || 0);
     await logAdminAction(env, `创建卡密 #${res.meta.last_row_id}`);
     return apiOk({ ok: true, id: res.meta.last_row_id });
   }
@@ -55,20 +59,21 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   // 批量导入（每行一条，product_id 可选）
   if (action === 'import') {
     const productId = Number(body.product_id ?? 0);
+    const pid = productId > 0 ? productId : null;
     const text = String(body.text || '').trim();
     if (!text) return apiErr('卡密内容为空');
     let keys = text.includes('\n') ? text.split(/\r?\n/) : text.split(/,|\||;/);
     keys = keys.map((k: string) => k.trim()).filter(Boolean);
     keys = [...new Set(keys)];
     if (!keys.length) return apiErr('未识别到卡密');
-    const inserts = keys.map((k: string) => db.prepare('INSERT OR IGNORE INTO cards (product_id, card) VALUES (?, ?)').bind(productId, k));
+    const inserts = keys.map((k: string) => db.prepare('INSERT OR IGNORE INTO cards (product_id, card) VALUES (?, ?)').bind(pid, k));
     const CHUNK = 79; let imported = 0;
     for (let i = 0; i < inserts.length; i += CHUNK) {
       const r = await db.batch(inserts.slice(i, i + CHUNK));
       imported += r.filter((x: any) => (x.meta?.changes ?? 0) > 0).length;
     }
-    await recalcProductStock(db, productId);
-    await logAdminAction(env, `导入卡密 ${productId} 条=${imported} 跳过=${keys.length - imported}`);
+    await recalcProductStock(db, pid || 0);
+    await logAdminAction(env, `导入卡密 ${pid || '库'} 条=${imported} 跳过=${keys.length - imported}`);
     return apiOk({ count: imported, skipped: keys.length - imported });
   }
 
@@ -99,8 +104,8 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
     const id = Number(body.id); if (!id) return apiErr('缺少卡密 ID');
     const row = await db.prepare('SELECT product_id FROM cards WHERE id=? AND status=0').bind(id).first<any>();
     if (!row) return apiErr('仅可回库未售卡密');
-    await db.prepare('UPDATE cards SET product_id=0 WHERE id=?').bind(id).run();
-    await recalcProductStock(db, Number(row.product_id));
+    await db.prepare('UPDATE cards SET product_id=NULL WHERE id=?').bind(id).run();
+    await recalcProductStock(db, Number(row.product_id ?? 0));
     await logAdminAction(env, `卡密 #${id} 回库`);
     return apiOk({ ok: true });
   }

@@ -165,27 +165,32 @@ export async function checkOrderPayment(env: StoreEnv, orderId: string, viewToke
     `).bind(check.tx_hash, order.id, check.from_address, order.address, check.value, check.confirmations, check.confirmed ? 'confirmed' : 'detected', new Date().toISOString()).run();
 
     if (!check.confirmed) {
-      // pending -> payment_detected；已处于 payment_detected 则仅更新确认数
+      // pending -> payment_detected；并立即清除过期时间，避免"已到账却因未支付超时被关闭"
       await transitionOrder(db, order.id, 'pending', 'payment_detected', 'payment_detected', JSON.stringify({ tx: check.tx_hash, confirmations: check.confirmations }));
-      await db.prepare('UPDATE orders SET tx_hash=?, tx_confirm=? WHERE id=? AND status IN (?,?)').bind(check.tx_hash, check.confirmations, order.id, 'pending', 'payment_detected').run();
+      await db.prepare('UPDATE orders SET tx_hash=?, tx_confirm=?, expired_at=NULL WHERE id=? AND status IN (?,?)').bind(check.tx_hash, check.confirmations, order.id, 'pending', 'payment_detected').run();
       await recordPaymentEvent(db, order.id, { tx_hash: check.tx_hash, event_type: 'detected', confirmations: check.confirmations, amount: check.value });
       return { ok: true, status: 'payment_detected', confirmations: check.confirmations };
     }
 
-    // 已确认：pending|payment_detected -> paid
-    let moved = await transitionOrder(db, order.id, 'pending', 'paid', 'payment_confirmed', JSON.stringify({ tx: check.tx_hash, confirmations: check.confirmations }));
-    if (!moved) moved = await transitionOrder(db, order.id, 'payment_detected', 'paid', 'payment_confirmed', JSON.stringify({ tx: check.tx_hash, confirmations: check.confirmations }));
-    await recordPaymentEvent(db, order.id, { tx_hash: check.tx_hash, event_type: 'confirmed', confirmations: check.confirmations, amount: check.value });
+    // 已确认：原子地推进到 paid（订单状态 + 支付流水 + 审计一次提交，防止"状态/确认数不同步"）
+    const now = new Date().toISOString();
+    const confirmBatch = await db.batch([
+      db.prepare(`UPDATE orders SET status='paid', tx_hash=?, tx_confirm=?, paid_at=? WHERE id=? AND status IN ('pending','payment_detected')`).bind(check.tx_hash, check.confirmations, now, order.id),
+      db.prepare(`INSERT INTO payment_transactions (tx_hash,order_id,from_address,to_address,amount,confirmations,status,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(tx_hash) DO UPDATE SET confirmations=excluded.confirmations,status=excluded.status,updated_at=excluded.updated_at`).bind(check.tx_hash, order.id, check.from_address, order.address, check.value, check.confirmations, 'confirmed', now),
+      db.prepare(`INSERT INTO payment_events (order_id,tx_hash,event_type,confirmations,amount) VALUES (?,?,?,?,?)`).bind(order.id, check.tx_hash, 'confirmed', check.confirmations, check.value),
+      db.prepare(`INSERT INTO order_events (order_id,event_type,from_status,to_status,metadata) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND status=?)`).bind(order.id, 'payment_confirmed', 'pending', 'paid', JSON.stringify({ tx: check.tx_hash, confirmations: check.confirmations }), order.id, 'paid'),
+    ]);
+    if ((confirmBatch[0]?.meta?.changes ?? 0) !== 1) {
+      const fresh = await getOrder(db, order.id);
+      return { ok: true, status: fresh?.status || 'paid', confirmations: check.confirmations };
+    }
 
-    const fresh = await getOrder(db, order.id);
-    const effective = fresh || order;
-    if (effective.status !== 'paid') return { ok: true, status: effective.status, confirmations: check.confirmations };
-
+    const effective = (await getOrder(db, order.id)) || { ...order, tx_hash: check.tx_hash, tx_confirm: check.confirmations };
     const product = await getProduct(db, order.product_id);
     if (product?.delivery_type === 'manual') return { ok: true, status: 'paid', confirmations: check.confirmations };
 
     // 持久化 tx_hash/confirm 后发货
-    const shipped = await fulfillOrder(env, { ...effective, tx_hash: effective.tx_hash || check.tx_hash, tx_confirm: effective.tx_confirm || check.confirmations }, check.tx_hash, check.confirmations);
+    const shipped = await fulfillOrder(env, effective, check.tx_hash, check.confirmations);
     if (shipped) return { ok: true, status: 'shipped', confirmations: check.confirmations };
     const post = await getOrder(db, order.id);
     return { ok: false, status: post?.status || 'paid', confirmations: check.confirmations, error: '支付已确认，但库存不足或在处理', retry: true };
@@ -219,56 +224,55 @@ export async function processPendingOrders(env: StoreEnv): Promise<number> {
 export async function fulfillOrder(env: StoreEnv, order: Order, txHash: string, confirmations: number): Promise<boolean> {
   const db = env.DB;
 
-  // 1) CAS：只有拿到 paid->fulfilling 的 Worker 才有执行权
+  // 1) CAS：只有拿到 paid->fulfilling 的 Worker 才有执行权（同一订单全局唯一）
   const got = await transitionOrder(db, order.id, 'paid', 'fulfilling', 'fulfill_start', JSON.stringify({ tx_hash: txHash, confirmations }));
   if (!got) return false;
 
-  // 2) 领取卡密
-  const { results } = await db.prepare(`SELECT id FROM cards WHERE product_id=? AND status=0 ORDER BY id ASC LIMIT ?`).bind(order.product_id, order.qty).all<{ id: number }>();
-  const cardIds = (results || []).map((c: any) => c.id);
-  if (cardIds.length < order.qty) {
-    await transitionOrder(db, order.id, 'fulfilling', 'manual_review', 'fulfill_shortage', JSON.stringify({ needed: order.qty, got: cardIds.length }));
-    return false;
-  }
+  const now = new Date().toISOString();
 
-  // 3) 原子占用卡密
-  const placeholders = cardIds.map(() => '?').join(',');
-  const updResult = await db.prepare(`UPDATE cards SET status=1, order_id=?, sold_at=? WHERE id IN (${placeholders}) AND status=0`)
-    .bind(order.id, new Date().toISOString(), ...cardIds).run();
-  if ((updResult.meta?.changes ?? 0) < cardIds.length) {
+  // 2) 原子领取：单条 UPDATE 用子查询领取 qty 张未售卡（并绑定本订单 order_id，防他单复用）
+  const claim = await db.prepare(
+    `UPDATE cards SET status=1, order_id=?, sold_at=? WHERE id IN (SELECT id FROM cards WHERE product_id=? AND status=0 ORDER BY id ASC LIMIT ?)`,
+  ).bind(order.id, now, order.product_id, order.qty).run();
+  const claimed = claim.meta?.changes ?? 0;
+  if (claimed < order.qty) {
+    // 库存不足/并发抢卡：释放本次领取（仅本订单专属，条件 status=1），转人工。绝不做"已发货但卡可售"。
     await db.prepare(`UPDATE cards SET status=0, order_id=NULL, sold_at=NULL WHERE order_id=? AND status=1`).bind(order.id).run();
-    await transitionOrder(db, order.id, 'fulfilling', 'manual_review', 'fulfill_conflict', '并发占用卡密失败');
+    await transitionOrder(db, order.id, 'fulfilling', 'manual_review', 'fulfill_shortage', JSON.stringify({ needed: order.qty, got: claimed }));
     return false;
   }
 
+  const cardRes = await db.prepare(`SELECT id FROM cards WHERE order_id=? AND status=1`).bind(order.id).all<{ id: number }>();
+  const cardIds = (cardRes.results || []).map((c: any) => c.id);
   const idList = cardIds.join(',');
-  let shippedOk = false;
+
+  // 3) 最终结算：一个 D1 事务内完成 卡/订单/库存/关联/审计，要么全成功要么全回滚
+  const settleMeta = JSON.stringify({ cards: cardIds.length, tx: txHash });
   try {
-    // 4) 库存扣减 + 订单写入（状态仍为 fulfilling，稍后 CAS 提交）
     await db.batch([
-      db.prepare(`UPDATE products SET sold=sold+?, stock=MAX(stock-?, 0), updated_at=? WHERE id=?`).bind(order.qty, order.qty, new Date().toISOString(), order.product_id),
-      db.prepare(`UPDATE orders SET tx_hash=?, tx_confirm=?, card_ids=?, paid_at=?, expired_at=NULL WHERE id=? AND status='fulfilling'`).bind(txHash, confirmations, idList, new Date().toISOString(), order.id),
+      // 关联 order_cards（领取后这些卡 order_id=? 且 status=1）
+      db.prepare(`INSERT INTO order_cards (order_id, card_id) SELECT ?, id FROM cards WHERE order_id=? AND status=1`).bind(order.id, order.id),
+      // 唯一一次库存扣减（仅在我们持有 fulfilling 时）
+      db.prepare(`UPDATE products SET sold=sold+?, stock=MAX(stock-?, 0), updated_at=? WHERE id=?`).bind(order.qty, order.qty, now, order.product_id),
+      // 订单最终提交为 shipped（条件 status='fulfilling'，防止其它执行者误提交）
+      db.prepare(`UPDATE orders SET tx_hash=?, tx_confirm=?, card_ids=?, paid_at=?, expired_at=NULL, status='shipped' WHERE id=? AND status='fulfilling'`).bind(txHash, confirmations, idList, now, order.id),
+      // 发货审计（仅当订单确实变成 shipped 才记录）
+      db.prepare(`INSERT INTO order_events (order_id,event_type,from_status,to_status,metadata) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND status=?)`).bind(order.id, 'fulfilled', 'fulfilling', 'shipped', settleMeta, order.id, 'shipped'),
     ]);
-    // 5) 唯一一次提交：fulfilling -> shipped
-    const done = await transitionOrder(db, order.id, 'fulfilling', 'shipped', 'fulfilled', JSON.stringify({ cards: cardIds.length, tx: txHash }));
-    if (!done) throw new Error('shipped transition failed');
-    shippedOk = true;
   } catch {
-    // 回滚已占用卡密，避免"库存减少但订单未发货"
-    await db.prepare(`UPDATE cards SET status=0, order_id=NULL, sold_at=NULL WHERE order_id=? AND status=1`).bind(order.id).run();
-    await transitionOrder(db, order.id, 'fulfilling', 'manual_review', 'fulfill_error', '发货提交异常');
+    // 极端 SQL 失败：保持卡占用 + 订单转人工（绝不让"订单已发货但卡密重新可售"）
+    await transitionOrder(db, order.id, 'fulfilling', 'manual_review', 'fulfill_error', '结算事务失败(卡保持占用,人工核实)');
     return false;
   }
 
-  // 写入订单-卡密关联（规范化）
-  if (shippedOk) { try { await linkOrderCards(db, order.id, cardIds); } catch { /* 尽力而为 */ } }
+  const shippedOk = true;
 
-  // 6) 尽力而为：邮件 + 归集任务（只发生一次 shipping 成功后）
+  // 6) 尽力而为：邮件 + 归集任务（只发生在真正 shipped 成功后）
   if (shippedOk && order.contact_email && !order.email_sent_at) {
     try {
-      const { results: cards } = await db.prepare(`SELECT card FROM cards WHERE id IN (${placeholders})`).bind(...cardIds).all<{ card: string }>();
+      const { results: cards } = await db.prepare(`SELECT card FROM cards WHERE id IN (${cardIds.map(() => '?').join(',')})`).bind(...cardIds).all<{ card: string }>();
       const sent = await sendDeliveryEmail(env, order, (cards || []).map((r) => r.card));
-      if (sent) await db.prepare(`UPDATE orders SET email_sent_at=? WHERE id=? AND email_sent_at IS NULL`).bind(new Date().toISOString(), order.id).run();
+      if (sent) await db.prepare(`UPDATE orders SET email_sent_at=? WHERE id=? AND email_sent_at IS NULL`).bind(now, order.id).run();
     } catch { /* 邮件失败不阻塞 */ }
   }
   if (shippedOk) {
@@ -283,7 +287,6 @@ export async function fulfillOrder(env: StoreEnv, order: Order, txHash: string, 
   }
   return shippedOk;
 }
-
 // 邮件重试（幂等）
 export async function retryPendingEmails(env: StoreEnv): Promise<number> {
   const { results } = await env.DB.prepare(`SELECT * FROM orders WHERE status='shipped' AND contact_email<>'' AND (email_sent_at IS NULL OR email_sent_at='') LIMIT 20`).all<Order>();

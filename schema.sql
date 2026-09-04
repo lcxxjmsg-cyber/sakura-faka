@@ -21,13 +21,13 @@ CREATE TABLE IF NOT EXISTS products (
 
 CREATE TABLE IF NOT EXISTS cards (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  product_id  INTEGER NOT NULL,
+  product_id  INTEGER NULL,                  -- NULL=未分配(卡密库)
   card        TEXT NOT NULL,                -- 卡密内容
   status      INTEGER NOT NULL DEFAULT 0,   -- 0未售 1已售
   order_id    TEXT NULL,
   sold_at     TEXT NULL,
   created_at  TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (product_id) REFERENCES products(id)
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_cards_product ON cards(product_id);
