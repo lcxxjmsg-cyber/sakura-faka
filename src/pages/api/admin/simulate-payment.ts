@@ -11,6 +11,8 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, locals }: any) => {
   const env = getEnv(locals?.runtime);
   if (!env) return apiErr('服务器配置错误', 500);
+  // 生产环境默认禁用模拟付款工具，仅 ENABLE_DEBUG_TOOLS=true 时可用
+  if (env.ENABLE_DEBUG_TOOLS !== 'true') return apiErr('调试工具未启用', 404);
   if (!(await requireAdmin(request, env))) return apiErr('未授权', 401);
 
   const body = await request.json().catch(() => ({}));

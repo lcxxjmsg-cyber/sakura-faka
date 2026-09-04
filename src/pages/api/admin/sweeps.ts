@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
 import { trySweep, claimSweep, type SweepTask, type SweepResult } from '@/lib/tron-sweep';
-import { isAutoSweepEnabled } from '@/lib/config';
+import { isAutoSweepEnabled, checkAdminPassword } from '@/lib/config';
 
 export const prerender = false;
 
@@ -30,6 +30,8 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
     const dryRun = action === 'dry_run';
     if (!dryRun) {
       if (!(await isAutoSweepEnabled(env))) return apiErr('自动归集未启用，请先到「系统设置」开启后重试');
+      // 高危操作：真实广播需重新验证管理员密码（re-auth）
+      if (!(await checkAdminPassword(env, String(body.password || '')))) return apiErr('请重新输入管理员密码以确认（re-auth）', 401);
       // 原子领取执行权，防与 cron 并发广播同一任务
       if (!(await claimSweep(env.DB, id))) return apiErr('任务正在被处理，或当前状态不可执行，请稍后重试');
     }

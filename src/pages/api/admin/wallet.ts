@@ -38,9 +38,10 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
 
   if (action === 'regenerate') {
     if (body.confirm !== 'REGENERATE') return apiErr('需要二次确认：confirm=REGENERATE');
+    if (!(await checkAdminPassword(env, String(body.password || '')))) return apiErr('请重新输入管理员密码以确认（re-auth）', 401);
     try {
       const wallet = await generateWallet(env);
-      await logAdminAction(env, '重新生成整套收款钱包（旧子地址作废）');
+      await logAdminAction(env, '重新生成整套收款钱包（旧子地址作废，已二次验证）');
       return apiOk({ ok: true, generated: true, mnemonic: wallet.mnemonic, master_address: wallet.master_address });
     } catch (e: any) {
       return apiErr(e?.message || '生成失败', 400);
@@ -48,8 +49,9 @@ export const POST: APIRoute = async ({ request, locals }: any) => {
   }
 
   if (action === 'clear') {
+    if (!(await checkAdminPassword(env, String(body.password || '')))) return apiErr('请重新输入管理员密码以确认（re-auth）', 401);
     await clearWalletMnemonic(env);
-    await logAdminAction(env, '清除系统保存的助记词（保留主地址）');
+    await logAdminAction(env, '清除系统保存的助记词（保留主地址，已二次验证）');
     return apiOk({ ok: true });
   }
 

@@ -229,6 +229,14 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
         <button onclick="changePassword()" class="btn-sakura !py-2 !px-5 text-sm">修改密码</button>
       </div>
     </div>
+    <div class="card p-5 mt-4 max-w-lg">
+      <h3 class="font-semibold text-slate-700 mb-3">🔒 会话与安全</h3>
+      <div id="session-meta" class="text-xs text-muted mb-3">加载中…</div>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="sessionLogout()" class="btn-ghost !py-2 !px-4 text-sm">退出登录</button>
+        <button onclick="sessionRevokeAll()" class="btn-ghost !py-2 !px-4 text-sm">撤销全部会话</button>
+      </div>
+    </div>
   </section>
     </div>
   </div>
@@ -527,8 +535,10 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
 
   async function runSweep(id: number, dryRun: boolean) {
     if (!dryRun && !confirm('确认执行真实转账？请确保源地址有足够 TRX 能量费。')) return;
+    const password = dryRun ? '' : (prompt('为安全起见，请输入管理员密码（re-auth）') || '');
+    if (!dryRun && !password) return;
     try {
-      const data = await request('/api/admin/sweeps', { method: 'POST', body: JSON.stringify({ id, action: dryRun ? 'dry_run' : 'sweep' }) });
+      const data = await request('/api/admin/sweeps', { method: 'POST', body: JSON.stringify({ id, action: dryRun ? 'dry_run' : 'sweep', password }) });
       const r = data.data || {};
       let msg = r.note || (dryRun ? '干跑完成' : '归集已提交');
       if (r.txID) msg += `\nTxID: ${r.txID}`;
@@ -678,10 +688,12 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
 
   async function regenerateWallet() {
     if (!confirm('⚠️ 重新生成会作废旧钱包，已派发但未归集的收款地址将无法再自动归集。请确认没有未结清订单。继续？')) return;
-    const confirm2 = prompt('如确认，请输入：REGENERATE');
-    if (confirm2 !== 'REGENERATE') return;
+    const confirm2 = prompt('为安全起见，请输入管理员密码（re-auth）');
+    if (!confirm2) return;
+    const password = prompt('如确认，请输入：REGENERATE');
+    if (password !== 'REGENERATE') return;
     try {
-      const data = await request('/api/admin/wallet', { method: 'POST', body: JSON.stringify({ action: 'regenerate', confirm: 'REGENERATE' }) });
+      const data = await request('/api/admin/wallet', { method: 'POST', body: JSON.stringify({ action: 'regenerate', confirm: 'REGENERATE', password: confirm2 }) });
       if (data.data.mnemonic) showMnemonic(data.data.mnemonic);
       alert('已生成全新收款钱包。旧子地址作废，请留意未归集订单。');
       loadWallet();
@@ -690,7 +702,9 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
 
   async function clearMnemonic() {
     if (!confirm('将从系统清除助记词（仅保留主钱包地址）。请确认已离线备份。继续？')) return;
-    try { await request('/api/admin/wallet', { method: 'POST', body: JSON.stringify({ action: 'clear' }) }); alert('已清除'); loadWallet(); }
+    const password = prompt('为安全起见，请输入管理员密码（re-auth）');
+    if (!password) return;
+    try { await request('/api/admin/wallet', { method: 'POST', body: JSON.stringify({ action: 'clear', password }) }); alert('已清除'); loadWallet(); }
     catch (e: any) { alert(e.message); }
   }
 
@@ -717,7 +731,23 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
         { ok: s.mail_configured, label: '配置发货邮件（可选，不配则不计）' },
       ];
       (document.querySelector('#onboard-list') as any).innerHTML = items.map((i) => `<div class="card px-4 py-3 flex items-center gap-3"><span class="text-lg ${i.ok ? 'text-emerald-500' : 'text-amber-500'}">${i.ok ? '✅' : '🟠'}</span><span class="text-sm text-slate-600">${i.label}</span></div>`).join('');
+      await loadSession();
     } catch (e: any) { alert(e.message); }
+  }
+
+  async function loadSession() {
+    try {
+      const d = await request('/api/admin/session');
+      const s = d.data?.session || {};
+      (document.querySelector('#session-meta') as any).textContent = s.last_seen ? `当前会话 · 创建 ${(s.created_at || '').slice(0, 16).replace('T', ' ')} · 最后活跃 ${(s.last_seen || '').slice(0, 16).replace('T', ' ')}${s.ip ? ' · ' + s.ip : ''}` : '—';
+    } catch { /* 无 */ }
+  }
+  async function sessionLogout() {
+    try { await request('/api/admin/session', { method: 'POST', body: JSON.stringify({ action: 'logout' }) }); location.href = '/admin/login'; } catch (e: any) { alert(e.message); }
+  }
+  async function sessionRevokeAll() {
+    if (!confirm('确认撤销所有后台会话（你会被登出）？')) return;
+    try { await request('/api/admin/session', { method: 'POST', body: JSON.stringify({ action: 'revoke_all' }) }); location.href = '/admin/login'; } catch (e: any) { alert(e.message); }
   }
 
   async function saveSite() {
@@ -1286,6 +1316,8 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   (window as any).saveMail = saveMail;
   (window as any).saveSweepToggle = saveSweepToggle;
   (window as any).changePassword = changePassword;
+  (window as any).sessionLogout = sessionLogout;
+  (window as any).sessionRevokeAll = sessionRevokeAll;
   (window as any).viewCards = viewCards;
   (window as any).closeCards = closeCards;
   (window as any).simulate = simulate;

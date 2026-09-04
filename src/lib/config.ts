@@ -1,10 +1,12 @@
-import { sha256 } from '@noble/hashes/sha2.js';
 import type { StoreEnv } from '@/types';
 import { bytesToHex } from '@/lib/tron';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { logger } from '@/lib/logger';
 
 // ============================================================
 // 后台可编辑配置：存到 D1 settings 表，读取时数据库优先、环境变量兜底。
-// 让"站点名/邮件/登录密码"都能在后台直接改，无需命令行。
+// 密码采用 WebCrypto PBKDF2-SHA256(100k 迭代)，兼容旧 sha256 单次哈希。
+// 安全策略：无任何凭据时 fail closed（绝不允许默认密码直接上线）。
 // ============================================================
 
 export async function getConfig(env: StoreEnv, key: string, dflt = ''): Promise<string> {
@@ -20,67 +22,85 @@ export async function setConfig(env: StoreEnv, key: string, value: string): Prom
   await env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind(key, String(value)).run();
 }
 
-// 读 DB 配置；为空时回退到环境变量
 export async function configOr(env: StoreEnv, key: string, envValue: string | undefined, dflt: string): Promise<string> {
   const v = await getConfig(env, key, '');
   return v || envValue || dflt;
 }
 
-// ===== 密码哈希 (salt + sha256) =====
+// ===== 密码：PBKDF2-SHA256 =====
+const PBKDF2_ITER = 100_000;
+
 function randHex(bytes: number): string {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return bytesToHex(arr);
+  const a = new Uint8Array(bytes);
+  crypto.getRandomValues(a);
+  return bytesToHex(a);
 }
 
-export function hashPassword(password: string, salt: string): string {
-  const hash = sha256(new TextEncoder().encode(`${salt}::${password}`));
-  return `${salt}:${bytesToHex(hash)}`;
+async function pbkdf2(pwd: string, salt: string, iterations: number): Promise<string> {
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pwd), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: new TextEncoder().encode(salt), iterations, hash: 'SHA-256' }, km, 256);
+  let s = '';
+  for (const b of new Uint8Array(bits)) s += String.fromCharCode(b);
+  return btoa(s);
 }
 
-export function verifyPassword(password: string, stored: string): boolean {
+function sha256Hex(pwd: string, salt: string): string {
+  return bytesToHex(sha256(new TextEncoder().encode(`${salt}::${pwd}`)));
+}
+
+// 新格式：`p1:salt:base64key`
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randHex(16);
+  const key = await pbkdf2(password, salt, PBKDF2_ITER);
+  return `p1:${salt}:${key}`;
+}
+
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const parts = String(stored || '').split(':');
-  if (parts.length !== 2 || !parts[0]) return false;
-  const [salt, hash] = parts;
-  return hashPassword(password, salt) === `${salt}:${hash}`;
+  if (parts.length === 3 && parts[0] === 'p1') {
+    const [, salt, key] = parts;
+    const computed = await pbkdf2(password, salt, PBKDF2_ITER);
+    return computed === key;
+  }
+  // 兼容旧格式 `salt:sha256hex`（单次 SHA256）
+  if (parts.length === 2) {
+    const [salt, hash] = parts;
+    return sha256Hex(password, salt) === hash;
+  }
+  return false;
 }
 
-// 首次部署的默认初始密码；登录后可在「系统设置」修改，改后立即失效（存哈希）。
-// 优先级：数据库密码 > 环境变量 ADMIN_PASSWORD > 本默认值。
-export const DEFAULT_ADMIN_PASSWORD = 'faka8888';
-
-// 读取管理员密码的校验方式：优先 DB 哈希；若无则回退环境变量明文；再回退内置默认密码
 export async function getAdminPasswordVerifier(env: StoreEnv): Promise<{ stored?: string; envPlain?: string }> {
   const stored = await getConfig(env, 'admin_password_hash', '');
   if (stored) return { stored };
   return { envPlain: env.ADMIN_PASSWORD };
 }
 
-// 校验某密码是否为当前管理员密码（DB 哈希 或 env 明文 或 内置默认）
+// 校验当前密码：DB 哈希 或 自定义环境变量。**两种都没有则 fail closed（返回 false）**。
 export async function checkAdminPassword(env: StoreEnv, password: string): Promise<boolean> {
   const { stored, envPlain } = await getAdminPasswordVerifier(env);
   if (stored) return verifyPassword(password, stored);
   if (envPlain) return password === envPlain;
-  return password === DEFAULT_ADMIN_PASSWORD;
+  return false;
 }
 
-// 是否仍在使用内置默认密码（用于前端强制修改提示）
-export async function usingDefaultPassword(env: StoreEnv): Promise<boolean> {
-  if (await hasAdminPasswordSet(env)) return false;
-  return !env.ADMIN_PASSWORD;
-}
-
-// 修改管理员密码（存哈希）
 export async function updateAdminPassword(env: StoreEnv, newPassword: string): Promise<void> {
-  const salt = randHex(16);
-  await setConfig(env, 'admin_password_hash', hashPassword(newPassword, salt));
+  const hashed = await hashPassword(newPassword);
+  await setConfig(env, 'admin_password_hash', hashed);
+  logger.info('admin password changed');
 }
 
 export async function hasAdminPasswordSet(env: StoreEnv): Promise<boolean> {
   return !!(await getConfig(env, 'admin_password_hash', ''));
 }
 
-// 自动归集是否开启：后台设置（settings）优先，回退环境变量 AUTO_SWEEP_ENABLED
+// 是否完全没有可用登录凭据（fail-closed 状态）
+export async function usingDefaultPassword(env: StoreEnv): Promise<boolean> {
+  if (await hasAdminPasswordSet(env)) return false;
+  return !env.ADMIN_PASSWORD;
+}
+
+// 自动归集是否开启
 export async function isAutoSweepEnabled(env: StoreEnv): Promise<boolean> {
   const v = await configOr(env, 'auto_sweep_enabled', env.AUTO_SWEEP_ENABLED, 'false');
   return v === 'true';
