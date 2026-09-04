@@ -10,6 +10,10 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     <button onclick="location.href='/'" class="btn-ghost !py-2 !px-4 text-sm">返回商店</button>
   </div>
 
+  <div id="pwd-banner" class="hidden mb-6 px-4 py-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-sm font-medium">
+    ⚠️ 当前仍在使用<b>初始默认密码</b>。请前往下方「系统设置 → 修改后台登录密码」立即修改，否则任何人知道默认密码都可登录。
+  </div>
+
   <div class="flex gap-2 mb-6 border-b border-slate-200">
     <button class="tab-btn" data-tab="wallet">🏦 收款钱包</button>
     <button class="tab-btn active" data-tab="products">📦 商品管理</button>
@@ -135,6 +139,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     </div>
     <div class="card p-5 mt-4 max-w-lg">
       <h3 class="font-semibold text-slate-700 mb-3">🔐 修改后台登录密码</h3>
+      <p id="pwd-hint" class="text-xs text-amber-600 mb-3"></p>
       <div class="space-y-3">
         <label class="block text-sm text-slate-500">当前密码<input id="set-old-pass" type="password" class="input mt-1" autocomplete="current-password" /></label>
         <label class="block text-sm text-slate-500">新密码（至少 8 位）<input id="set-new-pass" type="password" class="input mt-1" autocomplete="new-password" /></label>
@@ -274,14 +279,17 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   function esc(s: string) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!)); }
 
   // ============ Tab 切换 ============
+  function activateTab(tab: string) {
+    document.querySelectorAll('.tab-btn').forEach((b: any) => b.classList.remove('active'));
+    const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+    if (btn) btn.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach((p: any) => p.classList.add('hidden'));
+    const panel = document.querySelector('#tab-' + tab);
+    if (panel) panel.classList.remove('hidden');
+    load(tab);
+  }
   document.querySelectorAll('.tab-btn').forEach((btn: any) => {
-    btn.onclick = () => {
-      document.querySelectorAll('.tab-btn').forEach((b: any) => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.querySelectorAll('.tab-panel').forEach((p: any) => p.classList.add('hidden'));
-      document.querySelector('#tab-' + btn.dataset.tab).classList.remove('hidden');
-      load(btn.dataset.tab);
-    };
+    btn.onclick = () => activateTab(btn.dataset.tab);
   });
 
   document.querySelectorAll('.status-btn').forEach((btn: any) => {
@@ -547,8 +555,12 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
       (document.querySelector('#mail-status') as any).textContent = s.mail_configured
         ? `已配置（key: ${s.mail_resend_key_masked}）`
         : (s.mail_from ? '已填发件人，缺少 API Key' : '未配置');
+      (document.querySelector('#pwd-hint') as any).textContent = s.use_default_password
+        ? '当前为初始默认密码 faka8888，请在“当前密码”填入它，再设置新密码。'
+        : '';
+      (document.querySelector('#pwd-banner') as any).classList.toggle('hidden', !!(s.admin_password_set));
       const items = [
-        { ok: s.admin_password_set, label: '设置后台登录密码（用初始密码登录后即可修改）' },
+        { ok: s.admin_password_set, label: '修改初始登录密码（首次请用默认密码登录并及时修改）' },
         { ok: s.wallet_ready, label: '生成收款钱包（「收款钱包」一键生成并备份助记词）' },
         { ok: s.mail_configured, label: '配置发货邮件（可选，不配则不计）' },
       ];
@@ -837,6 +849,16 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   (window as any).closeCards = closeCards;
   (window as any).simulate = simulate;
 
-  // 初始加载
-  loadProducts();
+  // 初始加载：若仍在使用初始默认密码，强制进入「系统设置」并显示横幅
+  (async () => {
+    try {
+      const s = (await request('/api/admin/settings')).data;
+      if (s && !s.admin_password_set) {
+        (document.querySelector('#pwd-banner') as any).classList.remove('hidden');
+        activateTab('settings');
+      } else {
+        loadProducts();
+      }
+    } catch { loadProducts(); }
+  })();
 </script>

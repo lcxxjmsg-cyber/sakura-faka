@@ -45,18 +45,29 @@ export function verifyPassword(password: string, stored: string): boolean {
   return hashPassword(password, salt) === `${salt}:${hash}`;
 }
 
-// 读取管理员密码的校验方式：优先 DB 哈希；若无则回退环境变量明文（初始密码）
+// 首次部署的默认初始密码；登录后可在「系统设置」修改，改后立即失效（存哈希）。
+// 优先级：数据库密码 > 环境变量 ADMIN_PASSWORD > 本默认值。
+export const DEFAULT_ADMIN_PASSWORD = 'faka8888';
+
+// 读取管理员密码的校验方式：优先 DB 哈希；若无则回退环境变量明文；再回退内置默认密码
 export async function getAdminPasswordVerifier(env: StoreEnv): Promise<{ stored?: string; envPlain?: string }> {
   const stored = await getConfig(env, 'admin_password_hash', '');
   if (stored) return { stored };
   return { envPlain: env.ADMIN_PASSWORD };
 }
 
-// 校验某密码是否为当前管理员密码（DB 哈希 或 env 明文）
+// 校验某密码是否为当前管理员密码（DB 哈希 或 env 明文 或 内置默认）
 export async function checkAdminPassword(env: StoreEnv, password: string): Promise<boolean> {
   const { stored, envPlain } = await getAdminPasswordVerifier(env);
   if (stored) return verifyPassword(password, stored);
-  return password === envPlain;
+  if (envPlain) return password === envPlain;
+  return password === DEFAULT_ADMIN_PASSWORD;
+}
+
+// 是否仍在使用内置默认密码（用于前端强制修改提示）
+export async function usingDefaultPassword(env: StoreEnv): Promise<boolean> {
+  if (await hasAdminPasswordSet(env)) return false;
+  return !env.ADMIN_PASSWORD;
 }
 
 // 修改管理员密码（存哈希）

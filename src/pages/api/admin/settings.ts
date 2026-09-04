@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
 import { requireAdmin } from '@/lib/adminAuth';
-import { getConfig, setConfig, checkAdminPassword, updateAdminPassword, hasAdminPasswordSet } from '@/lib/config';
+import { getConfig, setConfig, checkAdminPassword, updateAdminPassword, hasAdminPasswordSet, usingDefaultPassword } from '@/lib/config';
 
 export const prerender = false;
 
@@ -10,13 +10,14 @@ export const GET: APIRoute = async ({ request, locals, url }: any) => {
   if (!env) return apiErr('服务器配置错误', 500);
   if (!(await requireAdmin(request, env))) return apiErr('未授权', 401);
 
-  const [site_name, site_welcome, mail_from, mail_resend_key, admin_password_set, walletRow] = await Promise.all([
+  const [site_name, site_welcome, mail_from, mail_resend_key, admin_password_set, walletRow, useDefaultPwd] = await Promise.all([
     getConfig(env, 'site_name', ''),
     getConfig(env, 'site_welcome', ''),
     getConfig(env, 'mail_from', ''),
     getConfig(env, 'mail_resend_key', ''),
     hasAdminPasswordSet(env),
     env.DB.prepare(`SELECT COUNT(*) AS c FROM wallet_meta WHERE mnemonic<>''`).first<{ c: number }>(),
+    usingDefaultPassword(env),
   ]);
 
   // 脱敏 Resend key
@@ -35,6 +36,7 @@ export const GET: APIRoute = async ({ request, locals, url }: any) => {
     mail_resend_key_masked: mask(raw),
     mail_configured: !!(mail_from && mail_resend_key),
     admin_password_set,
+    use_default_password: useDefaultPwd,
     wallet_ready: (walletRow?.c ?? 0) > 0,
   });
 };
