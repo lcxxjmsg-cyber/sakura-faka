@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { apiOk, apiErr, getEnv, logAdminAction } from '@/lib/api';
-import { login, makeSid, setPasswordGrant, canAttemptLogin, recordLoginFail, clearLoginFails } from '@/lib/auth';
+import { makeSid, setPasswordGrant, canAttemptLogin, recordLoginFail, clearLoginFails } from '@/lib/auth';
+import { checkAdminPassword } from '@/lib/config';
 
 export const prerender = false;
 
-// 后台登录：校验密码，写入 session cookie
+// 后台登录：校验密码（DB 哈希优先，环境变量兜底），写入 session cookie
 export const POST: APIRoute = async ({ request, locals, cookies }: any) => {
   const env = getEnv(locals?.runtime);
   if (!env) return apiErr('服务器配置错误', 500);
@@ -17,7 +18,7 @@ export const POST: APIRoute = async ({ request, locals, cookies }: any) => {
   const password = String(body.password || '');
   if (!password) return apiErr('请输入密码');
 
-  if (password === env.ADMIN_PASSWORD) {
+  if (await checkAdminPassword(env, password)) {
     const sid = makeSid();
     await setPasswordGrant(env, sid);
     await clearLoginFails(env, ip);

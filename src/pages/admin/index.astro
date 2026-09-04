@@ -20,6 +20,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     <button class="tab-btn" data-tab="sweeps">🔄 资金归集</button>
     <button class="tab-btn" data-tab="logs">📜 操作日志</button>
     <button class="tab-btn" data-tab="system">🩺 系统自检</button>
+    <button class="tab-btn" data-tab="settings">⚙️ 系统设置</button>
   </div>
 
   <!-- 收款钱包 -->
@@ -107,6 +108,40 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     <div class="flex items-center justify-between mb-4"><h2 class="font-semibold text-slate-700">系统自检</h2><button onclick="runSystemCheck()" class="btn-sakura !py-2 !px-4 text-sm">开始自检</button></div>
     <p class="text-sm text-slate-500 mb-4">只读检查，不广播任何交易，无资金风险。</p>
     <div id="system-result" class="space-y-2">点击"开始自检"运行。</div>
+  </section>
+
+  <!-- 系统设置 -->
+  <section id="tab-settings" class="tab-panel hidden">
+    <div class="flex items-center justify-between mb-4"><h2 class="font-semibold text-slate-700">系统设置</h2><button onclick="loadSettings()" class="btn-ghost !py-1.5 !px-3 text-xs">刷新</button></div>
+    <div id="onboard-list" class="space-y-2 mb-4"></div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="card p-5">
+        <h3 class="font-semibold text-slate-700 mb-3">🏠 站点信息</h3>
+        <div class="space-y-3">
+          <label class="block text-sm text-slate-500">站点名<input id="set-site-name" class="input mt-1" /></label>
+          <label class="block text-sm text-slate-500">首页欢迎语<input id="set-site-welcome" class="input mt-1" /></label>
+          <button onclick="saveSite()" class="btn-sakura !py-2 !px-5 text-sm">保存站点信息</button>
+        </div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-slate-700 mb-3">📧 邮件通知 (Resend)</h3>
+        <div class="space-y-3">
+          <label class="block text-sm text-slate-500">发件人 (MAIL_FROM)<input id="set-mail-from" class="input mt-1" placeholder="如 樱花市集 <no-reply@你的域名>" /></label>
+          <label class="block text-sm text-slate-500">Resend API Key<input id="set-mail-key" type="password" class="input mt-1" placeholder="re_xxx（留空则清空）" /></label>
+          <p id="mail-status" class="text-xs text-slate-400"></p>
+          <button onclick="saveMail()" class="btn-sakura !py-2 !px-5 text-sm">保存邮件配置</button>
+        </div>
+      </div>
+    </div>
+    <div class="card p-5 mt-4 max-w-lg">
+      <h3 class="font-semibold text-slate-700 mb-3">🔐 修改后台登录密码</h3>
+      <div class="space-y-3">
+        <label class="block text-sm text-slate-500">当前密码<input id="set-old-pass" type="password" class="input mt-1" autocomplete="current-password" /></label>
+        <label class="block text-sm text-slate-500">新密码（至少 8 位）<input id="set-new-pass" type="password" class="input mt-1" autocomplete="new-password" /></label>
+        <label class="block text-sm text-slate-500">确认新密码<input id="set-new-pass2" type="password" class="input mt-1" autocomplete="new-password" /></label>
+        <button onclick="changePassword()" class="btn-sakura !py-2 !px-5 text-sm">修改密码</button>
+      </div>
+    </div>
   </section>
 </Layout>
 
@@ -269,6 +304,7 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     if (tab === 'sweeps') return loadSweeps();
     if (tab === 'logs') return loadLogs();
     if (tab === 'system') return runSystemCheck();
+    if (tab === 'settings') return loadSettings();
   }
 
   async function loadStats() {
@@ -497,6 +533,59 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
     if (!confirm('将从系统清除助记词（仅保留主钱包地址）。请确认已离线备份。继续？')) return;
     try { await request('/api/admin/wallet', { method: 'POST', body: JSON.stringify({ action: 'clear' }) }); alert('已清除'); loadWallet(); }
     catch (e: any) { alert(e.message); }
+  }
+
+  // ============ 系统设置 ============
+  async function loadSettings() {
+    try {
+      const data = await request('/api/admin/settings');
+      const s = data.data || {};
+      (document.querySelector('#set-site-name') as any).value = s.site_name || '';
+      (document.querySelector('#set-site-welcome') as any).value = s.site_welcome || '';
+      (document.querySelector('#set-mail-from') as any).value = s.mail_from || '';
+      (document.querySelector('#set-mail-key') as any).value = '';
+      (document.querySelector('#mail-status') as any).textContent = s.mail_configured
+        ? `已配置（key: ${s.mail_resend_key_masked}）`
+        : (s.mail_from ? '已填发件人，缺少 API Key' : '未配置');
+      const items = [
+        { ok: s.admin_password_set, label: '设置后台登录密码（用初始密码登录后即可修改）' },
+        { ok: s.wallet_ready, label: '生成收款钱包（「收款钱包」一键生成并备份助记词）' },
+        { ok: s.mail_configured, label: '配置发货邮件（可选，不配则不计）' },
+      ];
+      (document.querySelector('#onboard-list') as any).innerHTML = items.map((i) => `<div class="card px-4 py-3 flex items-center gap-3"><span class="text-lg ${i.ok ? 'text-emerald-500' : 'text-amber-500'}">${i.ok ? '✅' : '🟠'}</span><span class="text-sm text-slate-600">${i.label}</span></div>`).join('');
+    } catch (e: any) { alert(e.message); }
+  }
+
+  async function saveSite() {
+    const site_name = (document.querySelector('#set-site-name') as any).value.trim();
+    const site_welcome = (document.querySelector('#set-site-welcome') as any).value.trim();
+    try { await request('/api/admin/settings', { method: 'POST', body: JSON.stringify({ site_name, site_welcome }) }); alert('已保存站点信息'); loadSettings(); }
+    catch (e: any) { alert(e.message); }
+  }
+
+  async function saveMail() {
+    const mail_from = (document.querySelector('#set-mail-from') as any).value.trim();
+    const mail_resend_key = (document.querySelector('#set-mail-key') as any).value.trim();
+    if (!mail_from && !mail_resend_key) return alert('请填写发件人或 Resend API Key（留空将清空）');
+    try { await request('/api/admin/settings', { method: 'POST', body: JSON.stringify({ mail_from, mail_resend_key }) }); alert('已保存邮件配置'); loadSettings(); }
+    catch (e: any) { alert(e.message); }
+  }
+
+  async function changePassword() {
+    const oldP = (document.querySelector('#set-old-pass') as any).value;
+    const newP = (document.querySelector('#set-new-pass') as any).value;
+    const newP2 = (document.querySelector('#set-new-pass2') as any).value;
+    if (!oldP) return alert('请输入当前密码');
+    if (newP.length < 8) return alert('新密码至少 8 位');
+    if (newP !== newP2) return alert('两次新密码不一致');
+    try {
+      await request('/api/admin/settings', { method: 'POST', body: JSON.stringify({ old_password: oldP, new_password: newP }) });
+      alert('✅ 已修改密码，下次请用新密码登录');
+      (document.querySelector('#set-old-pass') as any).value = '';
+      (document.querySelector('#set-new-pass') as any).value = '';
+      (document.querySelector('#set-new-pass2') as any).value = '';
+      loadSettings();
+    } catch (e: any) { alert(e.message); }
   }
 
   // ============ 查看订单卡密 / 模拟到账 ============
@@ -740,6 +829,10 @@ const autoSweepEnabled = (Astro as any).locals?.runtime?.env?.AUTO_SWEEP_ENABLED
   (window as any).copyMnemonic = copyMnemonic;
   (window as any).regenerateWallet = regenerateWallet;
   (window as any).clearMnemonic = clearMnemonic;
+  (window as any).loadSettings = loadSettings;
+  (window as any).saveSite = saveSite;
+  (window as any).saveMail = saveMail;
+  (window as any).changePassword = changePassword;
   (window as any).viewCards = viewCards;
   (window as any).closeCards = closeCards;
   (window as any).simulate = simulate;

@@ -1,12 +1,15 @@
 import type { StoreEnv, Order } from '@/types';
+import { configOr } from '@/lib/config';
 
 const esc = (s: string) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
-// 发送发货通知邮件（HTML）。仅当已配置 RESEND_API_KEY / MAIL_FROM / 买家邮箱时才会发送。
+// 发送发货通知邮件（HTML）。可在后台「系统设置」配置；未配置时返回 false 不发信。
 export async function sendDeliveryEmail(env: StoreEnv, order: Order, resources: string[]): Promise<boolean> {
-  if (!env.RESEND_API_KEY || !env.MAIL_FROM || !order.contact_email) return false;
-  const siteName = env.SITE_NAME || '樱花市集';
+  const apiKey = await configOr(env, 'mail_resend_key', env.RESEND_API_KEY, '');
+  const from = await configOr(env, 'mail_from', env.MAIL_FROM, '');
+  if (!apiKey || !from || !order.contact_email) return false;
+  const siteName = (await configOr(env, 'site_name', env.SITE_NAME, '樱花市集')) || '樱花市集';
 
   const resourceHtml = resources
     .map((value, index) => {
@@ -47,8 +50,8 @@ export async function sendDeliveryEmail(env: StoreEnv, order: Order, resources: 
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: env.MAIL_FROM, to: [order.contact_email], subject: `【${siteName}】订单 ${order.id} 发货通知`, html, text }),
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ from, to: [order.contact_email], subject: `【${siteName}】订单 ${order.id} 发货通知`, html, text }),
     });
     return response.ok;
   } catch {
